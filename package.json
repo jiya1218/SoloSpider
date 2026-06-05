@@ -13,7 +13,8 @@
     "dev:worker": "npm run dev --prefix apps/worker",
     "build:worker": "npm run build --prefix apps/worker",
     "typecheck:worker": "npm run typecheck --prefix apps/worker",
-    "typecheck": "npm run typecheck --prefix apps/worker && npm run typecheck --prefix apps/web-next"
+    "typecheck": "npm run typecheck --prefix apps/worker && npm run typecheck --prefix apps/web-next",
+    "start": "npm run start --prefix apps/web-next"
   },
   "workspaces": [
     "apps/worker",
