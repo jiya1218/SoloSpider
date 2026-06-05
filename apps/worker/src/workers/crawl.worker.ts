@@ -92,7 +92,7 @@ async function processCrawlJob(job: Job<CrawlJobData>): Promise<object> {
 
 export function startCrawlWorker() {
   const worker = new Worker<CrawlJobData>("crawl", processCrawlJob, {
-    connection: redis,
+    connection: redis as any,
     concurrency: 2, // max 2 simultaneous crawl jobs
   });
 

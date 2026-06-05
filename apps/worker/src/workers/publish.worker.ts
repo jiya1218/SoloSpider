@@ -479,7 +479,7 @@ async function processPublishJob(job: Job<PublishJobData>): Promise<object> {
 
 export function startPublishWorker() {
   const worker = new Worker<PublishJobData>("publish", processPublishJob, {
-    connection: redis,
+    connection: redis as any,
     concurrency: 5,
   });
 

@@ -40,4 +40,4 @@ export const redis = new Redis(env.REDIS_URL, {
 });
 
 redis.on("connect", () => console.log("✅ Redis connected"));
-redis.on("error", (err) => console.error("Redis error:", err.message));
+redis.on("error", (err: any) => console.error("Redis error:", err.message));

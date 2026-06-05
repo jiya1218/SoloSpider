@@ -179,7 +179,7 @@ export function startPromptScanWorker() {
   const worker = new Worker<PromptScanJobData>(
     "prompt-scan",
     processPromptScanJob,
-    { connection: redis, concurrency: 1 } // serial — AI calls are expensive
+    { connection: redis as any, concurrency: 1 } // serial — AI calls are expensive
   );
 
   worker.on("completed", (job) => console.log(`[PromptScanWorker] ✅ Job ${job.id} done`));

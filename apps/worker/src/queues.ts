@@ -38,12 +38,12 @@ const defaultJobOptions = {
 };
 
 export const crawlQueue = new Queue<CrawlJobData>("crawl", {
-  connection: redis,
+  connection: redis as any,
   defaultJobOptions,
 });
 
 export const promptScanQueue = new Queue<PromptScanJobData>("prompt-scan", {
-  connection: redis,
+  connection: redis as any,
   defaultJobOptions: {
     ...defaultJobOptions,
     attempts: 2, // AI calls can be expensive, limit retries
@@ -51,11 +51,11 @@ export const promptScanQueue = new Queue<PromptScanJobData>("prompt-scan", {
 });
 
 export const scoringQueue = new Queue<ScoringJobData>("scoring", {
-  connection: redis,
+  connection: redis as any,
   defaultJobOptions,
 });
 
 export const publishQueue = new Queue<PublishJobData>("publish", {
-  connection: redis,
+  connection: redis as any,
   defaultJobOptions,
 });

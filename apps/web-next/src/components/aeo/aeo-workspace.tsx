@@ -268,7 +268,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
           table: "prompt_scan_runs",
           filter: `project_id=eq.${activeProject.id}`,
         },
-        (payload) => {
+        (payload: any) => {
           const updated = payload.new as any;
           if (!updated?.id) return;
           setScanRun((prev: any) => {

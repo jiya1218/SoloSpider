@@ -80,7 +80,7 @@ async function processScoringJob(job: Job<ScoringJobData>): Promise<object> {
 
 export function startScoringWorker() {
   const worker = new Worker<ScoringJobData>("scoring", processScoringJob, {
-    connection: redis,
+    connection: redis as any,
     concurrency: 5,
   });
 

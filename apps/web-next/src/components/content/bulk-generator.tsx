@@ -154,12 +154,12 @@ export function BulkGenerator() {
       });
 
       const results = await Promise.all(insertPromises);
-      const ids = results.map(r => r.data?.id).filter(Boolean);
+      const ids = results.map((r: any) => r.data?.id).filter(Boolean);
 
       if (ids.length === 0) throw new Error("Failed to insert records");
 
       // Fire generations
-      ids.forEach(id => {
+      ids.forEach((id: any) => {
         supabase.functions.invoke("generate-blog", {
           body: { contentId: id },
         }).catch((err: any) => console.error("Generation invoke error:", err));

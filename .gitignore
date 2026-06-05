@@ -16,7 +16,7 @@ dist
 dist-ssr
 *.local
 migrations
-supabase
+/supabase
 
 # Editor directories and files
 .vscode/*
