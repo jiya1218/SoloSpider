@@ -18,5 +18,8 @@
   "workspaces": [
     "apps/worker",
     "apps/web-next"
-  ]
+  ],
+  "devDependencies": {
+    "cross-env": "^10.1.0"
+  }
 }
