@@ -276,12 +276,19 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
             if (!prev || updated.created_at >= prev.created_at) return updated;
             return prev;
           });
-          // When scan completes, refresh dependent queries
+          // When scan completes, refresh dependent queries and notify user
           if (updated.status === "done" || updated.status === "failed") {
             qc.invalidateQueries({ queryKey: ["prompt_scan_results", activeProject!.id] });
             qc.invalidateQueries({ queryKey: ["aeo_citations", activeProject!.id] });
             qc.invalidateQueries({ queryKey: ["query_fanouts", activeProject!.id] });
             qc.invalidateQueries({ queryKey: ["aeo_content_gaps", activeProject!.id] });
+            if (updated.status === "done") {
+              const mentioned = updated.brand_mentioned_count ?? 0;
+              const total = updated.completed ?? 0;
+              toast.success(`Scan complete! ${mentioned}/${total} queries mentioned your brand.`);
+            } else {
+              toast.error(`Scan failed: ${updated.error || "Unknown error"}`);
+            }
           }
         },
       )
@@ -662,10 +669,27 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
     }
   };
 
-  // Handle Run Scanner Scan
+  // Handle Run Scanner Scan — pre-seeds prompts if inventory is empty
   const handleRunScan = async () => {
     setScanning(true);
-    const runScan = async () => {
+    try {
+      // ── Pre-check: seed prompts if none exist, so the worker never fails silently ──
+      const currentPrompts = promptsQuery.data ?? [];
+      if (currentPrompts.length === 0) {
+        toast.info("No prompts found — auto-seeding baseline prompts...");
+        const seeded = await seedAeoPrompts(
+          activeProject.id,
+          buildDefaultAeoPrompts(activeProject.brand_name || activeProject.name, activeProject.domain),
+        );
+        qc.invalidateQueries({ queryKey: ["aeo_prompts", activeProject.id] });
+        if (seeded.inserted > 0) {
+          toast.success(`Seeded ${seeded.inserted} baseline prompts.`);
+        }
+        // Brief pause to let Supabase propagate the new rows before the worker reads them
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      // ── Dispatch scan job ──
       const res = await fetch("/api/jobs/prompt-scan", {
         method: "POST",
         headers: {
@@ -683,42 +707,14 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Server returned ${res.status}`);
       }
-    };
 
-    try {
-      await runScan();
-      toast.success("Prompt scan initiated on local Worker!");
+      toast.success("Prompt scan initiated — results will appear automatically when done.");
       qc.invalidateQueries({ queryKey: ["prompt_scan_run", activeProject.id] });
       qc.invalidateQueries({ queryKey: ["prompt_scan_results", activeProject.id] });
       qc.invalidateQueries({ queryKey: ["aeo_citations", activeProject.id] });
       qc.invalidateQueries({ queryKey: ["query_fanouts", activeProject.id] });
     } catch (e: any) {
-      const message = String(e?.message || "");
-      // Auto-recover defaults if table is empty
-      if (message.toLowerCase().includes("no active prompts")) {
-        try {
-          const seeded = await seedAeoPrompts(
-            activeProject.id,
-            buildDefaultAeoPrompts(activeProject.brand_name || activeProject.name, activeProject.domain),
-          );
-          qc.invalidateQueries({ queryKey: ["aeo_prompts", activeProject.id] });
-          await runScan();
-          toast.success(
-            seeded.inserted > 0
-              ? `No prompts found. Auto-seeded ${seeded.inserted} defaults and started scan.`
-              : "Recovered prompts and initiated scan.",
-          );
-          qc.invalidateQueries({ queryKey: ["prompt_scan_run", activeProject.id] });
-          qc.invalidateQueries({ queryKey: ["prompt_scan_results", activeProject.id] });
-          qc.invalidateQueries({ queryKey: ["aeo_citations", activeProject.id] });
-          qc.invalidateQueries({ queryKey: ["query_fanouts", activeProject.id] });
-          return;
-        } catch (recoverErr: any) {
-          toast.error(recoverErr?.message || "Failed to recover prompts and run scan");
-          return;
-        }
-      }
-      toast.error(message || "Failed to start prompt scan");
+      toast.error(String(e?.message || "Failed to start prompt scan"));
     } finally {
       setScanning(false);
     }
@@ -846,7 +842,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
               <span className="flex items-center gap-1.5 rounded-full bg-purple-50 border border-purple-100 px-3 py-1 text-xs font-bold text-purple-600 shadow-sm animate-pulse">
                 <Loader2 className="h-3 w-3 animate-spin text-purple-600" /> Scanner Running...
               </span>
-            ) : runQuery.data?.status === "completed" ? (
+            ) : runQuery.data?.status === "done" ? (
               <span className="flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-3 py-1 text-xs font-bold text-emerald-600 shadow-sm">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Scanner Idle
               </span>
