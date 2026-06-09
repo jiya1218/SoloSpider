@@ -88,20 +88,24 @@ export function BulkGenerator() {
   };
 
   const handleGenerateTitle = async (id: string, keyword: string) => {
-    if (!keyword.trim()) {
-      toast.error("Please enter a Main Keyword first");
-      return;
-    }
+    if (!keyword.trim()) return;
     setGeneratingTitleFor(id);
     try {
-      const supabase = getSupabaseBrowserClient();
-      const { data, error } = await supabase.functions.invoke("generate-title", {
-        body: { keyword: keyword.trim() }
+      const res = await fetch("/api/jobs/generate-title", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ keyword: keyword.trim() }),
       });
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned ${res.status}`);
+      }
+      const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (data.title) {
-        updateTopic(id, 'title', data.title);
+        updateTopic(id, "title", data.title);
         toast.success("Title generated successfully");
       }
     } catch (err: any) {
@@ -160,8 +164,12 @@ export function BulkGenerator() {
 
       // Fire generations
       ids.forEach((id: any) => {
-        supabase.functions.invoke("generate-blog", {
-          body: { contentId: id },
+        fetch("/api/jobs/generate-blog", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ contentId: id }),
         }).catch((err: any) => console.error("Generation invoke error:", err));
       });
 

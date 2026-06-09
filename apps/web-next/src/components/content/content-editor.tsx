@@ -340,18 +340,27 @@ export function ContentEditor({ id }: { id: string }) {
       const categoriesArray = selectedCategory !== "none" ? [parseInt(selectedCategory)] : undefined;
       const authorId = selectedAuthor !== "none" ? parseInt(selectedAuthor) : undefined;
 
-      const { data: wpData, error: invokeError } = await supabase.functions.invoke("publish-to-wordpress", {
-        body: {
+      const res = await fetch("/api/jobs/publish-to-wordpress", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
           contentId: content.id,
           integrationId: integration.id,
           publishStatus: publishStatus,
           categories: categoriesArray,
           authorId: authorId,
-          canonicalUrl: canonicalUrl.trim() || undefined
-        },
+          canonicalUrl: canonicalUrl.trim() || undefined,
+        }),
       });
 
-      if (invokeError) throw invokeError;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned ${res.status}`);
+      }
+
+      const wpData = await res.json();
       if (wpData && wpData.error) throw new Error(wpData.error);
 
       toast.success("Successfully sent to WordPress!");
@@ -385,8 +394,12 @@ export function ContentEditor({ id }: { id: string }) {
 
       if (updateError) throw updateError;
 
-      supabase.functions.invoke("generate-blog", {
-        body: { contentId: id },
+      fetch("/api/jobs/generate-blog", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ contentId: id }),
       }).catch((err: any) => console.error("Retry invoke error:", err));
 
       toast.success("Retrying generation...");
@@ -406,16 +419,23 @@ export function ContentEditor({ id }: { id: string }) {
       const currentContent = content.generated_content || "";
 
       // Call AI to regenerate just this section
-      const { data, error } = await supabase.functions.invoke("generate-blog", {
-        body: {
+      const res = await fetch("/api/jobs/generate-blog", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
           contentId: content.id,
           step: "regenerate_section",
           sectionHeading: sectionHeading,
           currentMarkdown: currentContent,
-        },
+        }),
       });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned ${res.status}`);
+      }
 
       toast.success(`Regenerated "${sectionHeading}"`);
       fetchContent();
@@ -431,10 +451,18 @@ export function ContentEditor({ id }: { id: string }) {
     setRefining(true);
     try {
       const supabase = getSupabaseBrowserClient();
-      const { data, error } = await supabase.functions.invoke("refine-content", {
-        body: { contentId: id, prompt: refinePrompt.trim() },
+      const res = await fetch("/api/jobs/refine-content", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ contentId: id, prompt: refinePrompt.trim() }),
       });
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned ${res.status}`);
+      }
+      const data = await res.json();
       if (data.error) throw new Error(data.error);
       toast.success("Content updated!");
       setRefinePrompt("");

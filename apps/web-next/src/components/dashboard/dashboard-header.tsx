@@ -4,9 +4,13 @@ import React, { useState } from "react";
 import { Calendar } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
-export function DashboardHeader() {
+interface DashboardHeaderProps {
+  timeRange: string;
+  setTimeRange: (val: string) => void;
+}
+
+export function DashboardHeader({ timeRange, setTimeRange }: DashboardHeaderProps) {
   const { user } = useAuth();
-  const [timeRange, setTimeRange] = useState("7");
   
   // Try to get full name first, then fallback to email prefix, then "there"
   const rawName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "there";

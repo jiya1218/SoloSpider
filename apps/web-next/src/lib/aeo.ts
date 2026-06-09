@@ -14,8 +14,19 @@ export async function runAeoAnalysis(params: {
   topics: string[];
   brandDescription?: string;
 }): Promise<AeoAnalysisResult> {
-  const supabase = getSupabaseBrowserClient();
-  const { data, error } = await supabase.functions.invoke("generate-aeo-analysis", { body: params });
-  if (error) throw error;
+  const res = await fetch("/api/jobs/generate-aeo-analysis", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params),
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || `Server returned ${res.status}`);
+  }
+
+  const data = await res.json();
   return data as AeoAnalysisResult;
 }

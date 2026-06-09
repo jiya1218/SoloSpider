@@ -1,10 +1,42 @@
 "use client";
 
 import React from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Loader2 } from "lucide-react";
 import { Project } from "@/types/project";
 
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { useEffect, useState } from "react";
+
 export function BrandSummary({ project }: { project: Project | null }) {
+  const [isGenerating, setIsGenerating] = useState(false);
+  const qc = useQueryClient();
+
+  const handleGenerate = async () => {
+    if (!project?.id) return;
+    setIsGenerating(true);
+    try {
+      const res = await fetch("/api/jobs/generate-brand-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+
+      if (!res.ok) throw new Error("Failed to generate summary");
+      await qc.invalidateQueries({ queryKey: ["projects"] });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to generate brand summary");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  useEffect(() => {
+    if (project?.id && !project?.brand_description && !isGenerating) {
+      handleGenerate();
+    }
+  }, [project?.id, project?.brand_description]);
+
   return (
     <div className="bg-indigo-50/50 rounded-xl border border-indigo-100 p-6 h-full flex flex-col justify-between relative overflow-hidden">
       <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
@@ -15,9 +47,17 @@ export function BrandSummary({ project }: { project: Project | null }) {
           <Sparkles className="w-4 h-4 text-indigo-600" />
           AI Brand Summary
         </h3>
-        <p className="mt-4 text-sm font-medium text-slate-700 leading-relaxed relative z-10">
-          {project?.brand_name || "Acme Solutions"} is an AI-powered growth platform built for ambitious founders and marketing teams. The brand combines innovation with clarity—delivering data-driven insights, automation, and measurable impact. Its voice is confident, professional, and forward-thinking, with a focus on helping businesses scale smarter and faster.
-        </p>
+        
+        {isGenerating ? (
+          <div className="mt-8 flex flex-col items-center justify-center gap-2 py-4">
+            <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">AI is crafting your summary...</p>
+          </div>
+        ) : (
+          <p className="mt-4 text-sm font-semibold text-slate-700 leading-relaxed relative z-10">
+            {project?.brand_description || "No brand summary generated yet. Click 'Refresh Brand Data' to generate one."}
+          </p>
+        )}
       </div>
       
       <div className="mt-6 flex items-center gap-2">

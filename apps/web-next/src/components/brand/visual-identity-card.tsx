@@ -9,14 +9,41 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 export function VisualIdentityCard({ project }: { project: Project | null }) {
-  const [logoError, setLogoError] = useState(false);
+  const [logoAttempt, setLogoAttempt] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
+
+  React.useEffect(() => {
+    setLogoAttempt(0);
+  }, [project?.id]);
   
   const cleanDomain = project?.domain ? project.domain.replace(/^(https?:\/\/)+/, '').replace(/^www\./, '').replace(/\/$/, '') : null;
-  const logoUrl = project?.brand_logo_url || (cleanDomain ? `https://logo.clearbit.com/${cleanDomain}` : null);
   const faviconUrl = project?.favicon_url || (cleanDomain ? `https://www.google.com/s2/favicons?domain=${cleanDomain}&sz=128` : null);
+
+  const getLogoUrl = () => {
+    const urls = [];
+    if (project?.brand_logo_url) {
+      urls.push(project.brand_logo_url);
+    }
+    if (cleanDomain) {
+      urls.push(`https://logo.clearbit.com/${cleanDomain}`);
+      urls.push(`https://www.google.com/s2/favicons?domain=${cleanDomain}&sz=128`);
+    }
+    if (logoAttempt < urls.length) {
+      return urls[logoAttempt];
+    }
+    return null;
+  };
+
+  const currentLogoUrl = getLogoUrl();
+
+  // Dynamic initials calculation for brand fallback
+  const brandName = project?.brand_name || project?.name || "Acme Solutions";
+  const initial = brandName.charAt(0).toUpperCase();
+  const nameParts = brandName.split(/\s+/);
+  const firstWord = nameParts[0]?.toLowerCase() || "acme";
+  const restWord = nameParts.slice(1).join(" ").toUpperCase();
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -47,7 +74,7 @@ export function VisualIdentityCard({ project }: { project: Project | null }) {
       if (updateError) throw updateError;
       
       toast.success("Logo uploaded successfully!");
-      setLogoError(false); // Reset error state so it tries to load the new one
+      setLogoAttempt(0); // Reset error state so it tries to load the new one
       await qc.invalidateQueries({ queryKey: ["projects"] });
     } catch (err: any) {
       toast.error(err?.message || "Failed to upload logo");
@@ -64,7 +91,7 @@ export function VisualIdentityCard({ project }: { project: Project | null }) {
           <Palette className="w-4 h-4 text-indigo-500" />
           Visual Identity
         </h3>
-        <Link href="/app/en/settings/project" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+        <Link href="/app/en/settings/project" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
           <Edit2 className="w-3 h-3" /> Edit
         </Link>
       </div>
@@ -78,12 +105,12 @@ export function VisualIdentityCard({ project }: { project: Project | null }) {
                 <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Uploading...</span>
               </div>
-            ) : logoUrl && !logoError ? (
+            ) : currentLogoUrl ? (
               <img 
-                src={logoUrl} 
+                src={currentLogoUrl} 
                 alt="Logo" 
                 className="max-h-full max-w-full object-contain cursor-pointer transition-opacity hover:opacity-80" 
-                onError={() => setLogoError(true)} 
+                onError={() => setLogoAttempt(prev => prev + 1)} 
                 onClick={() => fileInputRef.current?.click()}
                 title="Click to update logo"
               />
@@ -94,12 +121,12 @@ export function VisualIdentityCard({ project }: { project: Project | null }) {
                 title="Upload custom logo"
               >
                 <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-black text-xl relative overflow-hidden group-hover:bg-indigo-700 transition-colors">
-                  <span className="group-hover:hidden">A</span>
+                  <span className="group-hover:hidden">{initial}</span>
                   <UploadCloud className="w-5 h-5 hidden group-hover:block" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-lg font-black text-slate-900 leading-none">acme</span>
-                  <span className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">SOLUTIONS</span>
+                  <span className="text-lg font-black text-slate-900 leading-none">{firstWord}</span>
+                  {restWord && <span className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">{restWord}</span>}
                 </div>
               </div>
             )}
@@ -116,9 +143,9 @@ export function VisualIdentityCard({ project }: { project: Project | null }) {
           <span className="text-xs font-semibold text-slate-500 block mb-3">Favicon</span>
           <div className="h-20 bg-slate-50 rounded-lg border border-slate-100 flex items-center justify-center p-4">
             {faviconUrl ? (
-              <img src={faviconUrl} alt="Favicon" className="w-8 h-8 object-contain" />
+              <img src={faviconUrl} alt="Favicon" className="w-8 h-8 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
             ) : (
-              <div className="w-8 h-8 bg-indigo-600 rounded-md flex items-center justify-center text-white font-black text-sm">A</div>
+              <div className="w-8 h-8 bg-indigo-600 rounded-md flex items-center justify-center text-white font-black text-sm">{initial}</div>
             )}
           </div>
         </div>

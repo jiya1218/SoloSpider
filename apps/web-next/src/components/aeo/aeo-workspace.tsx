@@ -555,18 +555,27 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
       return;
     }
     setCrawling(true);
-    const supabase = getSupabaseBrowserClient();
     try {
-      toast.info("🕷️ Launching Site Crawler via Deno Edge Worker...");
-      const { data, error } = await supabase.functions.invoke("crawl-website", {
-        body: {
+      toast.info("🕷️ Launching Site Crawler locally...");
+      const res = await fetch("/api/jobs/crawl", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-worker-secret": process.env.NEXT_PUBLIC_WORKER_SECRET || "dev-secret",
+        },
+        body: JSON.stringify({
           project_id: activeProject.id,
           website: activeProject.domain,
           max_pages: crawlerMaxPages,
-        },
+        }),
       });
-      if (error) throw error;
-      toast.success(`✅ Crawled ${data.pages_crawled} sitemap pages successfully!`);
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned ${res.status}`);
+      }
+
+      toast.success("🕷️ Crawler job enqueued! Tracking scan progress...");
       qc.invalidateQueries({ queryKey: ["crawl_run", activeProject.id] });
       qc.invalidateQueries({ queryKey: ["crawled_pages", activeProject.id] });
     } catch (e: any) {
@@ -656,21 +665,29 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
   // Handle Run Scanner Scan
   const handleRunScan = async () => {
     setScanning(true);
-    const supabase = getSupabaseBrowserClient();
     const runScan = async () => {
-      const { error } = await supabase.functions.invoke("run-prompt-scan", {
-        body: {
+      const res = await fetch("/api/jobs/prompt-scan", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-worker-secret": process.env.NEXT_PUBLIC_WORKER_SECRET || "dev-secret",
+        },
+        body: JSON.stringify({
           project_id: activeProject.id,
           brand_name: activeProject.brand_name || activeProject.name,
           models: DEFAULT_MODELS,
-        },
+        }),
       });
-      if (error) throw error;
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned ${res.status}`);
+      }
     };
 
     try {
       await runScan();
-      toast.success("Prompt scan initiated on Edge Workers!");
+      toast.success("Prompt scan initiated on local Worker!");
       qc.invalidateQueries({ queryKey: ["prompt_scan_run", activeProject.id] });
       qc.invalidateQueries({ queryKey: ["prompt_scan_results", activeProject.id] });
       qc.invalidateQueries({ queryKey: ["aeo_citations", activeProject.id] });

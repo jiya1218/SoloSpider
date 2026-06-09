@@ -110,11 +110,15 @@ export function ContentGenerator() {
 
       if (error) throw error;
 
-      supabase.functions.invoke("generate-blog", {
-        body: {
-          contentId: data.id,
-          includeToc: structToc
+      fetch("/api/jobs/generate-blog", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          contentId: data.id,
+          includeToc: structToc,
+        }),
       }).catch((err: any) => console.error("Generation invoke error:", err));
 
       toast.success("Generation started!");
@@ -133,11 +137,18 @@ export function ContentGenerator() {
     }
     setGeneratingTitle(true);
     try {
-      const supabase = getSupabaseBrowserClient();
-      const { data, error } = await supabase.functions.invoke("generate-title", {
-        body: { keyword: mainKeyword.trim() }
+      const res = await fetch("/api/jobs/generate-title", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ keyword: mainKeyword.trim() }),
       });
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned ${res.status}`);
+      }
+      const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (data.title) {
         setH1(data.title);

@@ -13,7 +13,7 @@ const competitors = [
 export function CompetitorSnapshot() {
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 h-full">
-      <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+      <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
         <Users2 className="w-4 h-4 text-indigo-500" />
         Competitor Snapshot
       </h3>
@@ -22,10 +22,10 @@ export function CompetitorSnapshot() {
         <table className="w-full text-left text-xs">
           <thead>
             <tr className="text-slate-400 font-semibold border-b border-slate-100">
-              <th className="pb-2 font-semibold">Competitor</th>
-              <th className="pb-2 font-semibold">Positioning</th>
-              <th className="pb-2 font-semibold">Strengths</th>
-              <th className="pb-2 font-semibold">Share of Voice</th>
+              <th className="pt-2 pb-3 font-semibold">Competitor</th>
+              <th className="pt-2 pb-3 font-semibold">Positioning</th>
+              <th className="pt-2 pb-3 font-semibold">Strengths</th>
+              <th className="pt-2 pb-3 font-semibold">Share of Voice</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">

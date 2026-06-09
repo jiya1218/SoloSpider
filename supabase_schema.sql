@@ -69,6 +69,9 @@ create table if not exists public.content_items (
   generated_title text,
   meta_description text,
   generated_content text,
+  details text,
+  detail text,
+  scheduled_date timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -89,11 +92,16 @@ create table if not exists public.crawled_pages (
   project_id uuid not null references public.projects(id) on delete cascade,
   url text not null,
   title text,
+  meta_desc text,
+  h1 text,
+  word_count integer,
+  status_code integer,
   source text,
   has_faq_schema boolean not null default false,
   has_howto boolean not null default false,
   schema_types text[] not null default '{}'::text[],
   crawled_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
   primary key (project_id, url)
 );
 

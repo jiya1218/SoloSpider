@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Radio, Edit2 } from "lucide-react";
+import Link from "next/link";
 
 export function BrandVoiceCard() {
   return (
@@ -11,9 +12,9 @@ export function BrandVoiceCard() {
           <Radio className="w-4 h-4 text-indigo-500" />
           Brand Voice
         </h3>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+        <Link href="/app/en/settings/project" className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
           <Edit2 className="w-3 h-3" /> Edit
-        </button>
+        </Link>
       </div>
 
       <div className="space-y-6 mb-6">

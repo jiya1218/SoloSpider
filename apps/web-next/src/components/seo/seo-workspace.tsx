@@ -181,18 +181,27 @@ export function SeoWorkspace() {
       return;
     }
     setCrawling(true);
-    const supabase = getSupabaseBrowserClient();
     try {
-      toast.info("🕷️ Launching Site Crawler via Deno Edge Worker...");
-      const { data, error } = await supabase.functions.invoke("crawl-website", {
-        body: {
+      toast.info("🕷️ Launching Site Crawler locally...");
+      const res = await fetch("/api/jobs/crawl", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-worker-secret": process.env.NEXT_PUBLIC_WORKER_SECRET || "dev-secret",
+        },
+        body: JSON.stringify({
           project_id: activeProject.id,
           website: activeProject.domain,
           max_pages: crawlerMaxPages,
-        },
+        }),
       });
-      if (error) throw error;
-      toast.success(`✅ Crawled ${data.pages_crawled} pages successfully!`);
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned ${res.status}`);
+      }
+
+      toast.success("🕷️ Crawler job enqueued! Tracking scan progress...");
       qc.invalidateQueries({ queryKey: ["crawl_run", activeProject.id] });
       qc.invalidateQueries({ queryKey: ["crawled_pages", activeProject.id] });
     } catch (e: any) {

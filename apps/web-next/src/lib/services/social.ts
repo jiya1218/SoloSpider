@@ -224,12 +224,16 @@ Return ONLY a valid JSON array with exactly 5 objects. Each object must have:
 Make captions authentic, engaging, and platform-native. Mix the types across the 5 posts.`;
 
   try {
-    const supabase = getSupabaseBrowserClient();
-    const { data, error } = await supabase.functions.invoke("generate-social-post", {
-      body: { action: "ideas", ...params },
+    const ideasRes = await fetch("/api/jobs/generate-social-post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "ideas", ...params }),
     });
-
-    if (error) throw error;
+    if (!ideasRes.ok) {
+      const err = await ideasRes.json().catch(() => ({}));
+      throw new Error(err.error || `Server returned status ${ideasRes.status}`);
+    }
+    const data = await ideasRes.json();
     if (data && Array.isArray(data)) {
       return data.map((idea, i) => ({
         id: String(idea.id || `idea_${i + 1}`),
@@ -303,9 +307,10 @@ export async function generateHighQualityImage(
   logoUrl?: string
 ): Promise<string> {
   try {
-    const supabase = getSupabaseBrowserClient();
-    const { data, error } = await supabase.functions.invoke("generate-social-post", {
-      body: { 
+    const res = await fetch("/api/jobs/generate-social-post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
         type: "image", 
         prompt, 
         projectId, 
@@ -313,14 +318,19 @@ export async function generateHighQualityImage(
         addLogo,
         brandName,
         logoUrl
-      },
+      }),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Server returned status ${res.status}`);
+    }
+    const data = await res.json();
 
-    if (!error && data && data.imageUrl) {
+    if (data && data.imageUrl) {
       return data.imageUrl;
     }
     
-    const message = (error as any)?.message || "Edge function returned no image URL.";
+    const message = "Local API returned no image URL.";
     throw new Error(message);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Edge function invocation failed.";
@@ -338,9 +348,10 @@ export async function generateSocialPostDraft(params: {
   includeHashtags?: boolean;
 }): Promise<GeneratedSocialPost> {
   try {
-    const supabase = getSupabaseBrowserClient();
-    const { data, error } = await supabase.functions.invoke("generate-social-post", {
-      body: {
+    const res = await fetch("/api/jobs/generate-social-post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         action: "single_post",
         platform: params.platform || "instagram",
         brandName: params.brandName,
@@ -349,10 +360,15 @@ export async function generateSocialPostDraft(params: {
         tone: params.tone || "engaging",
         prompt: params.prompt || "",
         includeHashtags: params.includeHashtags ?? true,
-      },
+      }),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Server returned status ${res.status}`);
+    }
+    const data = await res.json();
 
-    if (!error && data && typeof data === "object") {
+    if (data && typeof data === "object") {
       return {
         hook: String(data.hook || ""),
         caption: String(data.caption || ""),
@@ -361,7 +377,7 @@ export async function generateSocialPostDraft(params: {
       };
     }
     
-    console.warn("Edge function call failed, using static local fallback draft:", error);
+    console.warn("Edge function call failed, using static local fallback draft.");
   } catch (e) {
     console.warn("Edge function invocation exception, using static local fallback draft:", e);
   }
