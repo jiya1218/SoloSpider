@@ -81,7 +81,6 @@ export async function seedAeoPrompts(projectId: string, prompts: SeedPrompt[]) {
       project_id: projectId,
       topic: p.topic,
       prompt: p.prompt,
-      rationale: p.rationale,
       is_active: true,
     }));
 

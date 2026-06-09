@@ -226,7 +226,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
       const supabase = getSupabaseBrowserClient();
       const { data } = await supabase
         .from("aeo_prompts" as any)
-        .select("id, topic, prompt, is_active, rationale")
+        .select("id, topic, prompt, is_active")
         .eq("project_id", activeProject!.id)
         .order("created_at", { ascending: false });
       return (data || []) as any[];
@@ -1114,11 +1114,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
                       "{row.prompt}"
                     </p>
                   </div>
-                  {row.rationale && (
-                    <p className="text-[10px] text-slate-400 font-medium pt-2 border-t border-slate-100 flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3 shrink-0" /> {row.rationale}
-                    </p>
-                  )}
+
                 </div>
               ))}
               {(promptsQuery.data || []).length === 0 && (
