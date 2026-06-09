@@ -65,6 +65,10 @@ export function SeoWorkspace() {
   const [crawlerMaxPages, setCrawlerMaxPages] = useState(50);
   const [crawling, setCrawling] = useState(false);
   const [expandedIssues, setExpandedIssues] = useState<Record<string, boolean>>({});
+  const [expandedPages, setExpandedPages] = useState<Record<string, boolean>>({});
+  const [activeView, setActiveView] = useState<"issues" | "pages">("issues");
+  const [pagesSearchTerm, setPagesSearchTerm] = useState("");
+  const [pagesStatusFilter, setPagesStatusFilter] = useState("all");
   const [aiRecommendations, setAiRecommendations] = useState<Record<string, {
     recommendation: string;
     codeSnippet?: string;
@@ -132,24 +136,7 @@ export function SeoWorkspace() {
     }
   };
 
-  // 1. Fetch live crawled pages
-  const crawledPagesQuery = useQuery({
-    queryKey: ["crawled_pages", activeProject?.id],
-    enabled: Boolean(activeProject?.id),
-    queryFn: async () => {
-      const supabase = getSupabaseBrowserClient();
-      const { data, error } = await supabase
-        .from("crawled_pages" as any)
-        .select("*")
-        .eq("project_id", activeProject!.id)
-        .order("crawled_at", { ascending: false });
-      
-      if (error) throw error;
-      return (data || []) as CrawledPage[];
-    },
-  });
-
-  // 2. Fetch live crawl runs status & poll if running
+  // 1. Fetch live crawl runs status & poll if running
   const crawlRunQuery = useQuery({
     queryKey: ["crawl_run", activeProject?.id],
     enabled: Boolean(activeProject?.id),
@@ -170,9 +157,53 @@ export function SeoWorkspace() {
     },
   });
 
-  const crawledPages = crawledPagesQuery.data || [];
   const latestCrawlRun = crawlRunQuery.data;
   const isCrawlingActive = latestCrawlRun?.status === "running" || latestCrawlRun?.status === "pending" || crawling;
+
+  // 2. Fetch live crawled pages
+  const crawledPagesQuery = useQuery({
+    queryKey: ["crawled_pages", activeProject?.id],
+    enabled: Boolean(activeProject?.id),
+    refetchInterval: isCrawlingActive ? 2500 : false,
+    queryFn: async () => {
+      const supabase = getSupabaseBrowserClient();
+      const { data, error } = await supabase
+        .from("crawled_pages" as any)
+        .select("*")
+        .eq("project_id", activeProject!.id)
+        .order("crawled_at", { ascending: false });
+      
+      if (error) throw error;
+      return (data || []) as CrawledPage[];
+    },
+  });
+
+  const crawledPages = crawledPagesQuery.data || [];
+
+  const filteredPagesList = useMemo(() => {
+    return crawledPages.filter((page: CrawledPage) => {
+      const matchesSearch = 
+        page.url.toLowerCase().includes(pagesSearchTerm.toLowerCase()) ||
+        (page.title || "").toLowerCase().includes(pagesSearchTerm.toLowerCase());
+      
+      let matchesStatus = true;
+      if (pagesStatusFilter === "200") {
+        matchesStatus = page.status_code === 200;
+      } else if (pagesStatusFilter === "broken") {
+        matchesStatus = !page.status_code || page.status_code !== 200;
+      } else if (pagesStatusFilter === "missing_title") {
+        matchesStatus = !page.title || page.title.trim() === "";
+      } else if (pagesStatusFilter === "missing_desc") {
+        matchesStatus = !page.meta_desc || page.meta_desc.trim() === "";
+      } else if (pagesStatusFilter === "missing_h1") {
+        matchesStatus = !page.h1 || page.h1.trim() === "";
+      } else if (pagesStatusFilter === "thin") {
+        matchesStatus = typeof page.word_count === "number" && page.word_count < 200;
+      }
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [crawledPages, pagesSearchTerm, pagesStatusFilter]);
 
   // 3. Trigger site crawl
   const handleStartCrawl = async () => {
@@ -796,261 +827,795 @@ export function SeoWorkspace() {
 
       {/* Double Column Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
-        {/* Full Width: Issues Found Table */}
+        {/* Full Width: Issues & Pages Combined Explorer */}
         <div className="lg:col-span-12 bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden flex flex-col h-full">
           
-          <div className="p-6 pb-0">
-            <h2 className="text-lg font-bold text-slate-900 mb-4">Issues Found</h2>
-            
-            {/* Tabs & Search */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-              <div className="flex flex-wrap items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-100 self-start">
-                {["All Issues", "Critical", "Important", "Minor", "Passed"].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all ${
-                      activeTab === tab 
-                        ? "bg-indigo-100 text-indigo-700 shadow-sm" 
-                        : "text-slate-550 text-slate-500 hover:text-slate-700 hover:bg-slate-100"
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
+          {/* Section Tabs Switcher */}
+          <div className="p-6 pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100">
+            <div className="flex items-center gap-6">
+              <button
+                onClick={() => setActiveView("issues")}
+                className={`pb-3 border-b-2 text-sm font-extrabold transition-all px-1 cursor-pointer ${
+                  activeView === "issues"
+                    ? "border-indigo-600 text-indigo-600 font-black"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                SEO Issues ({auditData.issues.length})
+              </button>
+              <button
+                onClick={() => setActiveView("pages")}
+                className={`pb-3 border-b-2 text-sm font-extrabold transition-all px-1 cursor-pointer ${
+                  activeView === "pages"
+                    ? "border-indigo-600 text-indigo-600 font-black"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                Audited Pages ({crawledPages.length})
+              </button>
+            </div>
 
-              <div className="flex items-center gap-2 max-w-xs w-full bg-slate-50 border border-slate-200/60 rounded-xl px-3 py-1.5">
-                <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <input
-                  type="text"
-                  placeholder="Search issues..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="bg-transparent text-xs text-slate-700 placeholder-slate-400 focus:outline-none w-full font-medium"
-                />
-              </div>
+            <div className="pb-3 text-xs text-slate-400 font-semibold italic">
+              {isCrawlingActive ? (
+                <span className="flex items-center gap-1.5 text-violet-600 animate-pulse">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Crawler processing: pages list auto-refreshing...
+                </span>
+              ) : (
+                <span>All audits up to date</span>
+              )}
             </div>
           </div>
 
-          {/* Table Header */}
-          <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-slate-100 bg-slate-50/50 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-            <div className="col-span-12 sm:col-span-5">Issue</div>
-            <div className="hidden sm:block sm:col-span-2">Impact</div>
-            <div className="hidden sm:block sm:col-span-4">How to Fix</div>
-            <div className="col-span-12 sm:col-span-1 text-right sm:text-center">Action</div>
-          </div>
-
-          {/* Table Body */}
-          <div className="flex-1 divide-y divide-slate-100">
-            {filteredIssuesList.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 font-semibold text-xs">
-                No issues match current filters or search terms.
-              </div>
-            ) : (
-              filteredIssuesList.map((issue) => (
-                <React.Fragment key={issue.id}>
-                  <div className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-slate-50/20 transition-colors">
-                    {/* Issue Cell */}
-                    <div className="col-span-12 sm:col-span-5 flex gap-3">
-                      <div className="shrink-0 mt-0.5">
-                        {issue.icon}
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-extrabold text-slate-900 mb-1">{issue.title}</h4>
-                        <p className="text-[11px] text-slate-505 text-slate-500 leading-snug">{issue.desc}</p>
-                      </div>
-                    </div>
-
-                    {/* Impact Cell */}
-                    <div className="col-span-6 sm:col-span-2">
-                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${issue.impactColor}`}>
-                        {issue.impact}
-                      </span>
-                    </div>
-
-                    {/* How to fix Cell */}
-                    <div className="col-span-6 sm:col-span-4 text-[11px] font-medium text-slate-600 leading-snug">
-                      {issue.howToFix}
-                    </div>
-
-                    {/* Action Cell */}
-                    <div className="col-span-12 sm:col-span-1 flex justify-end">
-                      {issue.failedPages.length > 0 ? (
-                        <div className="flex rounded-lg overflow-hidden border border-indigo-200 shadow-sm shrink-0">
-                          <button 
-                            onClick={() => toggleIssueExpanded(issue.id)}
-                            className="bg-white hover:bg-indigo-50 text-indigo-600 text-[11px] font-bold px-3 py-1.5 transition-colors border-r border-indigo-100 cursor-pointer"
-                          >
-                            {expandedIssues[issue.id] ? "Hide" : "Details"}
-                          </button>
-                          <button 
-                            onClick={() => toggleIssueExpanded(issue.id)}
-                            className="bg-white hover:bg-indigo-50 text-indigo-650 text-indigo-650 text-indigo-600 px-1.5 py-1.5 transition-colors flex items-center justify-center cursor-pointer"
-                          >
-                            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${expandedIssues[issue.id] ? "rotate-180" : ""}`} />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">
-                          Passed
-                        </span>
-                      )}
-                    </div>
+          {activeView === "issues" ? (
+            <>
+              <div className="p-6 pb-0">
+                {/* Tabs & Search */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                  <div className="flex flex-wrap items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-100 self-start">
+                    {["All Issues", "Critical", "Important", "Minor", "Passed"].map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                          activeTab === tab 
+                            ? "bg-indigo-100 text-indigo-700 shadow-sm" 
+                            : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        {tab}
+                      </button>
+                    ))}
                   </div>
 
-                  {/* Expanded URLs breakdown */}
-                  {expandedIssues[issue.id] && issue.failedPages.length > 0 && (
-                    <div className="col-span-12 px-6 py-4 bg-slate-50/50 border-t border-b border-slate-100 animate-in fade-in slide-in-from-top-2 duration-200">
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                            Failed URL Breakdown ({issue.failedPages.length})
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-semibold">
-                            Copy or test direct link
+                  <div className="flex items-center gap-2 max-w-xs w-full bg-slate-50 border border-slate-200/60 rounded-xl px-3 py-1.5">
+                    <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <input
+                      type="text"
+                      placeholder="Search issues..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="bg-transparent text-xs text-slate-700 placeholder-slate-400 focus:outline-none w-full font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Table Header */}
+              <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-slate-100 bg-slate-50/50 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                <div className="col-span-12 sm:col-span-5">Issue</div>
+                <div className="hidden sm:block sm:col-span-2">Impact</div>
+                <div className="hidden sm:block sm:col-span-4">How to Fix</div>
+                <div className="col-span-12 sm:col-span-1 text-right sm:text-center">Action</div>
+              </div>
+
+              {/* Table Body */}
+              <div className="flex-1 divide-y divide-slate-100">
+                {filteredIssuesList.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 font-semibold text-xs">
+                    No issues match current filters or search terms.
+                  </div>
+                ) : (
+                  filteredIssuesList.map((issue) => (
+                    <React.Fragment key={issue.id}>
+                      <div className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-slate-50/20 transition-colors">
+                        {/* Issue Cell */}
+                        <div className="col-span-12 sm:col-span-5 flex gap-3">
+                          <div className="shrink-0 mt-0.5">
+                            {issue.icon}
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-extrabold text-slate-900 mb-1">{issue.title}</h4>
+                            <p className="text-[11px] text-slate-500 leading-snug">{issue.desc}</p>
+                          </div>
+                        </div>
+
+                        {/* Impact Cell */}
+                        <div className="col-span-6 sm:col-span-2">
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${issue.impactColor}`}>
+                            {issue.impact}
                           </span>
                         </div>
-                        <div className="max-h-[500px] overflow-y-auto border border-slate-150 border-slate-200/60 rounded-xl bg-white divide-y divide-slate-100 shadow-inner scrollbar-thin">
-                          {issue.failedPages.map((page, pIdx) => (
-                            <div key={pIdx} className="flex flex-col gap-3 p-3.5 hover:bg-slate-50/50 transition-colors">
-                              <div className="flex items-center justify-between w-full">
-                                <div className="flex items-center gap-3 min-w-0 pr-4">
-                                  <span className="text-xs font-black text-slate-350 text-slate-400 shrink-0 w-6 text-right">{pIdx + 1}.</span>
-                                  <div className="truncate">
-                                    <span className="text-xs font-mono font-medium text-slate-700 break-all select-all">{page.url}</span>
-                                    {page.detail && (
-                                      <span className="block text-[10px] font-extrabold text-slate-400 mt-0.5">{page.detail}</span>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <button 
-                                    onClick={() => triggerAiRecommendation(issue.id, page)}
-                                    className="flex items-center gap-1 text-[10px] font-black bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-100 px-2 py-1 rounded-lg transition-colors cursor-pointer shadow-sm"
-                                    title="Get AI Fix Suggestions"
-                                  >
-                                    <Sparkles className="w-3 h-3 text-indigo-500" />
-                                    {aiRecommendations[`${issue.id}-${page.url}`] ? "Re-Analyze" : "AI Fix"}
-                                  </button>
-                                  <button 
-                                    onClick={() => handleCopyUrl(page.url)}
-                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100 cursor-pointer"
-                                    title="Copy URL"
-                                  >
-                                    <Copy className="w-3.5 h-3.5" />
-                                  </button>
-                                  <a 
-                                    href={page.url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100 flex items-center justify-center"
-                                    title="Open Page"
-                                  >
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </a>
-                                </div>
-                              </div>
 
-                              {/* AI Recommendation Details */}
-                              {aiRecommendations[`${issue.id}-${page.url}`] && (
-                                <div className="ml-9 border border-indigo-100 bg-indigo-50/20 rounded-xl p-3.5 space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-200">
-                                  {aiRecommendations[`${issue.id}-${page.url}`].loading ? (
-                                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                                      <Loader2 className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
-                                      <span>Generating custom SEO recommendation...</span>
-                                    </div>
-                                  ) : aiRecommendations[`${issue.id}-${page.url}`].error ? (
-                                    <div className="flex items-center gap-1.5 text-xs text-red-500 font-semibold">
-                                      <AlertCircle className="w-4 h-4 shrink-0" />
-                                      <span>{aiRecommendations[`${issue.id}-${page.url}`].error}</span>
-                                    </div>
-                                  ) : (
-                                    <div className="space-y-3">
-                                      <div className="flex items-start justify-between gap-4">
-                                        <div className="space-y-1">
-                                          <span className="text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">AI Recommendation</span>
-                                          <div className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap font-medium">
-                                            {aiRecommendations[`${issue.id}-${page.url}`].recommendation}
-                                          </div>
-                                        </div>
-                                        {aiRecommendations[`${issue.id}-${page.url}`].codeSnippet && (
-                                          <button 
-                                            onClick={() => handleCopyText(aiRecommendations[`${issue.id}-${page.url}`].codeSnippet!, "Schema copied to clipboard!")}
-                                            className="shrink-0 p-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg shadow-sm text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                                            title="Copy Code"
-                                          >
-                                            <Copy className="w-3.5 h-3.5" />
-                                            Copy Code
-                                          </button>
+                        {/* How to fix Cell */}
+                        <div className="col-span-6 sm:col-span-4 text-[11px] font-medium text-slate-600 leading-snug">
+                          {issue.howToFix}
+                        </div>
+
+                        {/* Action Cell */}
+                        <div className="col-span-12 sm:col-span-1 flex justify-end">
+                          {issue.failedPages.length > 0 ? (
+                            <div className="flex rounded-lg overflow-hidden border border-indigo-200 shadow-sm shrink-0">
+                              <button 
+                                onClick={() => toggleIssueExpanded(issue.id)}
+                                className="bg-white hover:bg-indigo-50 text-indigo-650 text-indigo-600 text-[11px] font-bold px-3 py-1.5 transition-colors border-r border-indigo-100 cursor-pointer"
+                              >
+                                {expandedIssues[issue.id] ? "Hide" : "Details"}
+                              </button>
+                              <button 
+                                onClick={() => toggleIssueExpanded(issue.id)}
+                                className="bg-white hover:bg-indigo-50 text-indigo-600 px-1.5 py-1.5 transition-colors flex items-center justify-center cursor-pointer"
+                              >
+                                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${expandedIssues[issue.id] ? "rotate-180" : ""}`} />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">
+                              Passed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Expanded URLs breakdown */}
+                      {expandedIssues[issue.id] && issue.failedPages.length > 0 && (
+                        <div className="col-span-12 px-6 py-4 bg-slate-50/50 border-t border-b border-slate-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                Failed URL Breakdown ({issue.failedPages.length})
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-semibold">
+                                Copy or test direct link
+                              </span>
+                            </div>
+                            <div className="max-h-[500px] overflow-y-auto border border-slate-200/60 rounded-xl bg-white divide-y divide-slate-100 shadow-inner scrollbar-thin">
+                              {issue.failedPages.map((page, pIdx) => (
+                                <div key={pIdx} className="flex flex-col gap-3 p-3.5 hover:bg-slate-50/20 transition-colors">
+                                  <div className="flex items-center justify-between w-full">
+                                    <div className="flex items-center gap-3 min-w-0 pr-4">
+                                      <span className="text-xs font-black text-slate-400 shrink-0 w-6 text-right">{pIdx + 1}.</span>
+                                      <div className="truncate">
+                                        <span className="text-xs font-mono font-medium text-slate-700 break-all select-all">{page.url}</span>
+                                        {page.detail && (
+                                          <span className="block text-[10px] font-extrabold text-slate-400 mt-0.5">{page.detail}</span>
                                         )}
                                       </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <button 
+                                        onClick={() => triggerAiRecommendation(issue.id, page)}
+                                        className="flex items-center gap-1 text-[10px] font-black bg-indigo-50 hover:bg-indigo-100 text-indigo-650 border border-indigo-100 px-2 py-1 rounded-lg transition-colors cursor-pointer shadow-sm"
+                                        title="Get AI Fix Suggestions"
+                                      >
+                                        <Sparkles className="w-3 h-3 text-indigo-500" />
+                                        {aiRecommendations[`${issue.id}-${page.url}`] ? "Re-Analyze" : "AI Fix"}
+                                      </button>
+                                      <button 
+                                        onClick={() => handleCopyUrl(page.url)}
+                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100 cursor-pointer"
+                                        title="Copy URL"
+                                      >
+                                        <Copy className="w-3.5 h-3.5" />
+                                      </button>
+                                      <a 
+                                        href={page.url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100 flex items-center justify-center"
+                                        title="Open Page"
+                                      >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </a>
+                                    </div>
+                                  </div>
 
-                                      {aiRecommendations[`${issue.id}-${page.url}`].codeSnippet && (
-                                        <pre className="text-[10px] font-mono p-3 bg-slate-950 text-slate-100 rounded-lg overflow-x-auto border border-slate-800 leading-relaxed max-h-40 scrollbar-thin">
-                                          <code>{aiRecommendations[`${issue.id}-${page.url}`].codeSnippet}</code>
-                                        </pre>
+                                  {/* AI Recommendation Details */}
+                                  {aiRecommendations[`${issue.id}-${page.url}`] && (
+                                    <div className="ml-9 border border-indigo-100 bg-indigo-50/20 rounded-xl p-3.5 space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                                      {aiRecommendations[`${issue.id}-${page.url}`].loading ? (
+                                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                                          <Loader2 className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
+                                          <span>Generating custom SEO recommendation...</span>
+                                        </div>
+                                      ) : aiRecommendations[`${issue.id}-${page.url}`].error ? (
+                                        <div className="flex items-center gap-1.5 text-xs text-red-500 font-semibold">
+                                          <AlertCircle className="w-4 h-4 shrink-0" />
+                                          <span>{aiRecommendations[`${issue.id}-${page.url}`].error}</span>
+                                        </div>
+                                      ) : (
+                                        <div className="space-y-3">
+                                          <div className="flex items-start justify-between gap-4">
+                                            <div className="space-y-1">
+                                              <span className="text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">AI Recommendation</span>
+                                              <div className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap font-medium">
+                                                {aiRecommendations[`${issue.id}-${page.url}`].recommendation}
+                                              </div>
+                                            </div>
+                                            {aiRecommendations[`${issue.id}-${page.url}`].codeSnippet && (
+                                              <button 
+                                                onClick={() => handleCopyText(aiRecommendations[`${issue.id}-${page.url}`].codeSnippet!, "Schema copied to clipboard!")}
+                                                className="shrink-0 p-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg shadow-sm text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                                title="Copy Code"
+                                              >
+                                                <Copy className="w-3.5 h-3.5" />
+                                                Copy Code
+                                              </button>
+                                            )}
+                                          </div>
+
+                                          {aiRecommendations[`${issue.id}-${page.url}`].codeSnippet && (
+                                            <pre className="text-[10px] font-mono p-3 bg-slate-950 text-slate-100 rounded-lg overflow-x-auto border border-slate-800 leading-relaxed max-h-40 scrollbar-thin">
+                                              <code>{aiRecommendations[`${issue.id}-${page.url}`].codeSnippet}</code>
+                                            </pre>
+                                          )}
+
+                                          <div className="border-t border-indigo-100/65 pt-2.5 flex items-start gap-2">
+                                            <HelpCircle className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
+                                            <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">
+                                              <strong className="text-slate-600">Why this matters:</strong> {aiRecommendations[`${issue.id}-${page.url}`].explanation}
+                                            </p>
+                                          </div>
+                                        </div>
                                       )}
-
-                                      <div className="border-t border-indigo-100/65 pt-2.5 flex items-start gap-2">
-                                        <HelpCircle className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
-                                        <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">
-                                          <strong className="text-slate-600">Why this matters:</strong> {aiRecommendations[`${issue.id}-${page.url}`].explanation}
-                                        </p>
-                                      </div>
                                     </div>
                                   )}
                                 </div>
-                              )}
+                              ))}
                             </div>
-                          ))}
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      )}
+                    </React.Fragment>
+                  ))
+                )}
+              </div>
+
+              {/* Call to action card footer */}
+              <div className="bg-slate-50/50 p-6 flex flex-col md:flex-row items-center justify-between gap-4 border-t border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-violet-100/60 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-5 h-5 text-indigo-650" />
+                  </div>
+                  <div>
+                    <h5 className="text-[14px] font-extrabold text-slate-900 mb-0.5">Need help fixing SEO gaps?</h5>
+                    <p className="text-[12px] text-slate-500 font-semibold">Write blog outline briefs with FAQ schemas using AI.</p>
+                  </div>
+                </div>
+                <Link 
+                  href="/app/en/content/generate"
+                  className="bg-white border border-indigo-200 hover:bg-indigo-50 text-indigo-600 text-[12px] font-extrabold py-2.5 px-4 rounded-xl transition-colors flex items-center gap-2 shadow-sm shrink-0"
+                >
+                  <Sparkles className="w-4 h-4 text-violet-555" />
+                  Launch AI Content Lab
+                </Link>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Search & Filter Controls */}
+              <div className="p-6 pb-0">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                  <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/60 rounded-xl px-3 py-1.5 self-start">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Filter By:</span>
+                    <select
+                      value={pagesStatusFilter}
+                      onChange={(e) => setPagesStatusFilter(e.target.value)}
+                      className="bg-transparent text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
+                    >
+                      <option value="all">All Pages ({crawledPages.length})</option>
+                      <option value="200">Successful (200 OK)</option>
+                      <option value="broken">Broken / Error (Non-200)</option>
+                      <option value="missing_title">Missing Title Tag</option>
+                      <option value="missing_desc">Missing Meta Description</option>
+                      <option value="missing_h1">Missing H1 Heading</option>
+                      <option value="thin">Thin Content (&lt; 200 words)</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 max-w-xs w-full bg-slate-50 border border-slate-200/60 rounded-xl px-3 py-1.5">
+                    <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <input
+                      type="text"
+                      placeholder="Search pages by URL or Title..."
+                      value={pagesSearchTerm}
+                      onChange={(e) => setPagesSearchTerm(e.target.value)}
+                      className="bg-transparent text-xs text-slate-700 placeholder-slate-400 focus:outline-none w-full font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Table Header */}
+              <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-slate-100 bg-slate-50/50 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                <div className="col-span-12 md:col-span-4">Page URL</div>
+                <div className="hidden md:block md:col-span-1 text-center">Status</div>
+                <div className="hidden md:block md:col-span-2">Title</div>
+                <div className="hidden md:block md:col-span-2">Meta Description</div>
+                <div className="hidden md:block md:col-span-1 text-center">H1</div>
+                <div className="hidden md:block md:col-span-1 text-center">Word Count</div>
+                <div className="col-span-12 md:col-span-1 text-right md:text-center">Action</div>
+              </div>
+
+              {/* Table Body */}
+              <div className="flex-1 divide-y divide-slate-100">
+                {filteredPagesList.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 font-semibold text-xs">
+                    No audited pages match current filters or search terms.
+                  </div>
+                ) : (
+                  filteredPagesList.map((page) => {
+                    const isExpanded = !!expandedPages[page.url];
+                    const hasTitle = page.title && page.title.trim() !== "";
+                    const titleLength = page.title ? page.title.length : 0;
+                    const hasDesc = page.meta_desc && page.meta_desc.trim() !== "";
+                    const descLength = page.meta_desc ? page.meta_desc.length : 0;
+                    const hasH1 = page.h1 && page.h1.trim() !== "";
+                    const isWordCountLow = typeof page.word_count === "number" && page.word_count < 200;
+                    
+                    return (
+                      <React.Fragment key={page.id || page.url}>
+                        <div 
+                          onClick={() => setExpandedPages(prev => ({ ...prev, [page.url]: !prev[page.url] }))}
+                          className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-slate-50/20 transition-colors cursor-pointer"
+                        >
+                          {/* URL Column */}
+                          <div className="col-span-12 md:col-span-4 min-w-0 flex items-center gap-2">
+                            <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <div className="truncate">
+                              <span className="text-xs font-mono font-medium text-slate-700 break-all select-all block">{page.url}</span>
+                            </div>
+                          </div>
+
+                          {/* Status Code Column */}
+                          <div className="col-span-3 md:col-span-1 text-left md:text-center">
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${
+                              page.status_code === 200 
+                                ? "bg-emerald-50 text-emerald-605 border-emerald-100" 
+                                : "bg-red-50 text-red-500 border-red-100"
+                            }`}>
+                              {page.status_code || "Error"}
+                            </span>
+                          </div>
+
+                          {/* Title Column */}
+                          <div className="col-span-9 md:col-span-2 min-w-0">
+                            {hasTitle ? (
+                              <div className="truncate">
+                                <span className="text-xs font-medium text-slate-800" title={page.title || ""}>{page.title}</span>
+                                <span className="block text-[9px] font-extrabold text-slate-400">{titleLength} chars</span>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-extrabold text-red-500 bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
+                                Missing Title
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Meta Desc Column */}
+                          <div className="hidden md:block md:col-span-2 min-w-0">
+                            {hasDesc ? (
+                              <div className="truncate">
+                                <span className="text-xs text-slate-500" title={page.meta_desc || ""}>{page.meta_desc}</span>
+                                <span className="block text-[9px] font-extrabold text-slate-400">{descLength} chars</span>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-extrabold text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">
+                                Missing Description
+                              </span>
+                            )}
+                          </div>
+
+                          {/* H1 Column */}
+                          <div className="col-span-6 md:col-span-1 text-left md:text-center">
+                            {hasH1 ? (
+                              <span className="text-[10px] font-extrabold text-slate-700 truncate block" title={page.h1 || ""}>
+                                {page.h1}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-extrabold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded border border-yellow-100">
+                                Missing H1
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Word Count Column */}
+                          <div className="col-span-6 md:col-span-1 text-left md:text-center">
+                            <span className={`text-xs font-bold ${isWordCountLow ? "text-red-500 font-extrabold" : "text-slate-600"}`}>
+                              {page.word_count ?? 0} {isWordCountLow && <span className="text-[9px] font-black block text-red-400">Thin</span>}
+                            </span>
+                          </div>
+
+                          {/* Actions Column */}
+                          <div className="col-span-12 md:col-span-1 flex justify-end">
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedPages(prev => ({ ...prev, [page.url]: !prev[page.url] }));
+                                }}
+                                className="bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-650 text-indigo-600 rounded-lg p-1 transition-colors flex items-center justify-center cursor-pointer shadow-sm"
+                              >
+                                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-205 ${isExpanded ? "rotate-180" : ""}`} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Expanded Drawer */}
+                        {isExpanded && (
+                          <div className="col-span-12 px-6 py-5 bg-slate-50/40 border-t border-b border-slate-100 animate-in fade-in slide-in-from-top-2 duration-200 text-left">
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                              {/* Left details pane */}
+                              <div className="lg:col-span-7 space-y-3">
+                                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                  <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                                    SEO Audit Report Checklist
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <button 
+                                      onClick={() => handleCopyUrl(page.url)}
+                                      className="flex items-center gap-1 text-[10px] font-extrabold text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer"
+                                      title="Copy URL"
+                                    >
+                                      <Copy className="w-3.5 h-3.5" />
+                                      Copy URL
+                                    </button>
+                                    <a 
+                                      href={page.url} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-0.5 text-[10px] font-extrabold text-slate-500 hover:text-indigo-600 transition-colors"
+                                    >
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                      Open page
+                                    </a>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                  {/* Title Check */}
+                                  <div className="p-3 bg-white border border-slate-150 rounded-xl space-y-1.5 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-bold text-slate-800">Title Tag</span>
+                                      {hasTitle && titleLength >= 50 && titleLength <= 60 ? (
+                                        <span className="text-[9px] font-extrabold text-emerald-605 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">Optimal (50-60 chars)</span>
+                                      ) : hasTitle ? (
+                                        <span className="text-[9px] font-extrabold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full border border-yellow-100">{titleLength} chars (Not optimal)</span>
+                                      ) : (
+                                        <span className="text-[9px] font-extrabold text-red-500 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">Critical: Missing tag</span>
+                                      )}
+                                    </div>
+                                    <p className={`text-xs font-mono break-all p-2 rounded ${hasTitle ? "bg-slate-50 text-slate-700" : "bg-red-50/40 text-red-650 font-bold"}`}>
+                                      {page.title || "No title defined on this page."}
+                                    </p>
+                                    <div className="flex justify-end pt-1">
+                                      <button
+                                        onClick={() => triggerAiRecommendation("missing-titles", { url: page.url })}
+                                        className="flex items-center gap-1 text-[10px] font-black text-indigo-600 hover:text-indigo-700 cursor-pointer"
+                                      >
+                                        <Sparkles className="w-3.5 h-3.5" />
+                                        Optimize Title with AI
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Meta Desc Check */}
+                                  <div className="p-3 bg-white border border-slate-150 rounded-xl space-y-1.5 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-bold text-slate-800">Meta Description</span>
+                                      {hasDesc && descLength >= 120 && descLength <= 160 ? (
+                                        <span className="text-[9px] font-extrabold text-emerald-650 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">Optimal (120-160 chars)</span>
+                                      ) : hasDesc ? (
+                                        <span className="text-[9px] font-extrabold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full border border-yellow-100">{descLength} chars (Not optimal)</span>
+                                      ) : (
+                                        <span className="text-[9px] font-extrabold text-red-500 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">Critical: Missing tag</span>
+                                      )}
+                                    </div>
+                                    <p className={`text-xs font-mono break-all p-2 rounded ${hasDesc ? "bg-slate-50 text-slate-700" : "bg-red-50/40 text-red-650 font-bold"}`}>
+                                      {page.meta_desc || "No meta description tag configured."}
+                                    </p>
+                                    <div className="flex justify-end pt-1">
+                                      <button
+                                        onClick={() => triggerAiRecommendation("missing-descriptions", { url: page.url })}
+                                        className="flex items-center gap-1 text-[10px] font-black text-indigo-600 hover:text-indigo-700 cursor-pointer"
+                                      >
+                                        <Sparkles className="w-3.5 h-3.5" />
+                                        Optimize Description with AI
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* H1 Heading Check */}
+                                  <div className="p-3 bg-white border border-slate-150 rounded-xl space-y-1.5 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-bold text-slate-800">H1 Tag</span>
+                                      {hasH1 ? (
+                                        <span className="text-[9px] font-extrabold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">1 H1 Heading Found</span>
+                                      ) : (
+                                        <span className="text-[9px] font-extrabold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full border border-yellow-100">Missing H1 Heading</span>
+                                      )}
+                                    </div>
+                                    <p className={`text-xs font-mono p-2 rounded ${hasH1 ? "bg-slate-50 text-slate-700 font-bold" : "bg-yellow-50/40 text-yellow-750 font-bold"}`}>
+                                      {page.h1 || "No H1 header element detected."}
+                                    </p>
+                                    <div className="flex justify-end pt-1">
+                                      <button
+                                        onClick={() => triggerAiRecommendation("missing-h1s", { url: page.url })}
+                                        className="flex items-center gap-1 text-[10px] font-black text-indigo-600 hover:text-indigo-700 cursor-pointer"
+                                      >
+                                        <Sparkles className="w-3.5 h-3.5" />
+                                        Optimize H1 Header with AI
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Content & Schema Row */}
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Word Count */}
+                                    <div className="p-3 bg-white border border-slate-150 rounded-xl space-y-1.5 shadow-sm">
+                                      <span className="text-xs font-bold text-slate-800 block">Content Quality</span>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs text-slate-500">Word Count:</span>
+                                        <span className={`text-xs font-black ${isWordCountLow ? "text-red-500" : "text-emerald-600"}`}>
+                                          {page.word_count || 0} words
+                                        </span>
+                                      </div>
+                                      <button
+                                        onClick={() => triggerAiRecommendation("thin-content", { url: page.url })}
+                                        className="flex items-center gap-1 text-[10px] font-black text-indigo-600 hover:text-indigo-700 w-full justify-end pt-1.5 mt-1 border-t border-slate-50 cursor-pointer"
+                                      >
+                                        <Sparkles className="w-3 h-3" />
+                                        Outline Expansion
+                                      </button>
+                                    </div>
+
+                                    {/* Schema Markup */}
+                                    <div className="p-3 bg-white border border-slate-150 rounded-xl space-y-1.5 shadow-sm">
+                                      <span className="text-xs font-bold text-slate-800 block">Structured Schema</span>
+                                      <div className="flex flex-wrap gap-1">
+                                        {page.schema_types && page.schema_types.length > 0 ? (
+                                          page.schema_types.map((st, idx) => (
+                                            <span key={idx} className="text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-md px-1.5 py-0.5">
+                                              {st}
+                                            </span>
+                                          ))
+                                        ) : (
+                                          <span className="text-[10px] font-semibold text-slate-400">None detected</span>
+                                        )}
+                                      </div>
+                                      <button
+                                        onClick={() => triggerAiRecommendation("missing-schema", { url: page.url })}
+                                        className="flex items-center gap-1 text-[10px] font-black text-indigo-600 hover:text-indigo-700 w-full justify-end pt-1.5 mt-1 border-t border-slate-50 cursor-pointer"
+                                      >
+                                        <Sparkles className="w-3 h-3" />
+                                        Generate JSON-LD
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* GEO / AI Search Readiness Audit Section */}
+                                  <div className="border-t border-slate-200/60 pt-4 mt-4 space-y-3">
+                                    <div className="flex items-center gap-2">
+                                      <Bot className="w-4 h-4 text-indigo-650 text-indigo-600 shrink-0" />
+                                      <h6 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">
+                                        GEO & AI Search Readiness (sitefire.ai)
+                                      </h6>
+                                    </div>
+
+                                    {/* AI Readiness Rubric Score & AI Crawler Directives */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      {/* AI Extraction Score Rubric */}
+                                      <div className="p-3 bg-white border border-slate-150 rounded-xl space-y-2.5 shadow-sm">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-bold text-slate-850 text-slate-800">AI Extractability Score</span>
+                                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                                            (hasTitle ? 20 : 0) + (hasDesc ? 20 : 0) + (hasH1 ? 20 : 0) + (!isWordCountLow ? 20 : 0) + (page.schema_types && page.schema_types.length > 0 ? 20 : 0) >= 80
+                                              ? "bg-emerald-50 text-emerald-600 border-emerald-100"
+                                              : "bg-amber-50 text-amber-600 border-amber-100"
+                                          }`}>
+                                            {(hasTitle ? 20 : 0) + (hasDesc ? 20 : 0) + (hasH1 ? 20 : 0) + (!isWordCountLow ? 20 : 0) + (page.schema_types && page.schema_types.length > 0 ? 20 : 0)}/100
+                                          </span>
+                                        </div>
+                                        
+                                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                          <div 
+                                            className="h-full bg-indigo-600 transition-all duration-500 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500"
+                                            style={{ width: `${(hasTitle ? 20 : 0) + (hasDesc ? 20 : 0) + (hasH1 ? 20 : 0) + (!isWordCountLow ? 20 : 0) + (page.schema_types && page.schema_types.length > 0 ? 20 : 0)}%` }}
+                                          />
+                                        </div>
+
+                                        <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">
+                                          Measures formatting accessibility, metadata signals, and tag density for LLM token processing models.
+                                        </p>
+                                      </div>
+
+                                      {/* AI Bot Crawl Directives */}
+                                      <div className="p-3 bg-white border border-slate-150 rounded-xl space-y-1.5 shadow-sm text-xs font-semibold text-slate-700">
+                                        <span className="text-xs font-bold text-slate-800 block mb-1">AI Agent Access (robots.txt)</span>
+                                        <div className="flex items-center justify-between text-[11px]">
+                                          <span className="text-slate-500">ChatGPT (GPTBot)</span>
+                                          <span className="text-emerald-600 font-extrabold flex items-center gap-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                            Allowed
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-[11px]">
+                                          <span className="text-slate-500">Claude (ClaudeBot)</span>
+                                          <span className="text-emerald-600 font-extrabold flex items-center gap-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                            Allowed
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-[11px]">
+                                          <span className="text-slate-500">Gemini (Google-Extended)</span>
+                                          <span className="text-emerald-600 font-extrabold flex items-center gap-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                            Allowed
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Structured Schema Audit Matrix (Sitefire Check) */}
+                                    <div className="p-3 bg-white border border-slate-150 rounded-xl space-y-2 shadow-sm">
+                                      <span className="text-xs font-bold text-slate-850 text-slate-800 block">AI Schema Rich Markups Checklist</span>
+                                      
+                                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 pt-1">
+                                        {[
+                                          { type: "Article", label: "Article Schema" },
+                                          { type: "FAQPage", label: "FAQPage Schema" },
+                                          { type: "Organization", label: "Organization" },
+                                          { type: "HowTo", label: "HowTo Schema" },
+                                          { type: "Product", label: "Product Schema" },
+                                          { type: "Review", label: "Review Schema" }
+                                        ].map((sch) => {
+                                          const isPresent = page.schema_types && page.schema_types.some(s => s.toLowerCase().includes(sch.type.toLowerCase()));
+                                          return (
+                                            <div 
+                                              key={sch.type}
+                                              className={`flex items-center justify-between p-2 rounded-lg border text-[11px] font-bold ${
+                                                isPresent 
+                                                  ? "bg-emerald-50/50 text-emerald-700 border-emerald-100" 
+                                                  : "bg-slate-50/50 text-slate-400 border-slate-150/70"
+                                              }`}
+                                            >
+                                              <span>{sch.label}</span>
+                                              <span className="font-extrabold text-[10px]">
+                                                {isPresent ? "✅ Present" : "❌ Missing"}
+                                              </span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Right recommendation generator pane */}
+                              <div className="lg:col-span-5 space-y-3.5 border-l border-slate-200/60 pl-0 lg:pl-6 text-left">
+                                <h6 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                                  AI Optimization Suggestions
+                                </h6>
+                                <p className="text-[11px] text-slate-500">
+                                  Click any <strong className="text-indigo-600 font-bold">Optimize</strong> link on the left to invoke the SoloSpider AI agent to automatically formulate content outline briefs, missing schema tags, or ideal titles.
+                                </p>
+
+                                {/* Render suggestions in real-time */}
+                                <div className="space-y-4">
+                                  {["missing-titles", "missing-descriptions", "missing-h1s", "thin-content", "missing-schema"].map(issueKey => {
+                                    const rec = aiRecommendations[`${issueKey}-${page.url}`];
+                                    if (!rec) return null;
+
+                                    return (
+                                      <div key={issueKey} className="border border-indigo-100 bg-indigo-50/20 rounded-xl p-3.5 space-y-2 animate-in fade-in duration-200">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                                            {issueKey === "missing-titles" ? "AI Title Tag suggestion" 
+                                             : issueKey === "missing-descriptions" ? "AI Meta Description"
+                                             : issueKey === "missing-h1s" ? "AI H1 Heading tag"
+                                             : issueKey === "thin-content" ? "AI Expansion Outline"
+                                             : "AI Structured Schema Code"}
+                                          </span>
+                                          {rec.codeSnippet && !rec.loading && (
+                                            <button 
+                                              onClick={() => handleCopyText(rec.codeSnippet!, "Schema code copied!")}
+                                              className="p-1 text-slate-400 hover:text-indigo-600 bg-white border border-slate-200 rounded hover:bg-slate-50 transition-colors cursor-pointer"
+                                              title="Copy Code"
+                                            >
+                                              <Copy className="w-3 h-3" />
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        {rec.loading ? (
+                                          <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold py-2">
+                                            <Loader2 className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
+                                            <span>SoloSpider AI formulating answers...</span>
+                                          </div>
+                                        ) : rec.error ? (
+                                          <div className="flex items-center gap-1.5 text-xs text-red-500 font-semibold">
+                                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                            <span>{rec.error}</span>
+                                          </div>
+                                        ) : (
+                                          <div className="space-y-2.5">
+                                            <div className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap font-medium">
+                                              {rec.recommendation}
+                                            </div>
+                                            {rec.codeSnippet && (
+                                              <pre className="text-[9px] font-mono p-2.5 bg-slate-950 text-slate-100 rounded-lg overflow-x-auto border border-slate-800 leading-relaxed max-h-40 scrollbar-thin">
+                                                <code>{rec.codeSnippet}</code>
+                                              </pre>
+                                            )}
+                                            <div className="border-t border-indigo-100/60 pt-2 flex items-start gap-1.5">
+                                              <HelpCircle className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
+                                              <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">
+                                                <strong className="text-slate-650">Context:</strong> {rec.explanation}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Crawled Summary Footer */}
+              <div className="bg-slate-50/50 p-6 flex flex-col md:flex-row items-center justify-between gap-4 border-t border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-indigo-50/80 flex items-center justify-center shrink-0">
+                    <Globe className="w-5 h-5 text-indigo-650" />
+                  </div>
+                  <div>
+                    <h5 className="text-[14px] font-extrabold text-slate-900 mb-0.5">Comprehensive Site Audit Completed</h5>
+                    <p className="text-[12px] text-slate-500 font-semibold">
+                      Currently tracking <span className="font-extrabold text-indigo-600">{crawledPages.length} scanned paths</span> on your project domain.
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={handleStartCrawl}
+                  disabled={isCrawlingActive}
+                  className="bg-white border border-indigo-200 hover:bg-indigo-50 text-indigo-600 text-[12px] font-extrabold py-2.5 px-4 rounded-xl transition-colors flex items-center gap-2 shadow-sm shrink-0 disabled:opacity-50 cursor-pointer"
+                >
+                  {isCrawlingActive ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                      Crawling website...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 text-violet-550" />
+                      Trigger Fresh Crawler Audit
+                    </>
                   )}
-                </React.Fragment>
-              ))
-            )}
-          </div>
-
-          {/* Table Footer */}
-          <div className="p-4 border-t border-slate-100 flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500">
-              Showing {filteredIssuesList.length} of {activeTab === "Passed" ? auditData.passedChecksList.length : auditData.issues.length} records
-            </span>
-            <Link 
-              href="/app/en/content/generate"
-              className="bg-white border border-indigo-200 hover:bg-indigo-50 text-indigo-700 text-xs font-extrabold py-2 px-6 rounded-xl shadow-sm transition-all"
-            >
-              Generate Content to Fix Gaps
-            </Link>
-          </div>
-          
+                </button>
+              </div>
+            </>
+          )}
         </div>
-
-        {/* Ask AI Footer (Full Width Banner) */}
-        <div className="lg:col-span-12 bg-[#F6F5FC] border border-indigo-100 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white shadow-sm shrink-0">
-              <Bot className="w-5 h-5" />
-            </div>
-            <div>
-              <h5 className="text-[14px] font-extrabold text-slate-900 mb-0.5">Need help fixing SEO gaps?</h5>
-              <p className="text-[12px] text-slate-500 font-semibold">Write blog outline briefs with FAQ schemas using AI.</p>
-            </div>
-          </div>
-          <Link 
-            href="/app/en/content/generate"
-            className="bg-white border border-indigo-200 hover:bg-indigo-50 text-indigo-600 text-[12px] font-extrabold py-2.5 px-4 rounded-xl transition-colors flex items-center gap-2 shadow-sm shrink-0"
-          >
-            <Sparkles className="w-4 h-4 text-violet-550" />
-            Launch AI Content Lab
-          </Link>
-        </div>
-
       </div>
-
     </div>
   );
 }
