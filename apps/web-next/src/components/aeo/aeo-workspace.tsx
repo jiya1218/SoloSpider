@@ -233,18 +233,16 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
     },
   });
 
-  // ── Scan run — Supabase Realtime subscription (replaces 3s polling) ──────────
-  // We still do an initial fetch, but live updates come via the Realtime channel
-  // so the UI reacts instantly when the worker marks the run as done/failed.
-  const [scanRun, setScanRun] = useState<any>(null);
-  const realtimeChannelRef = useRef<ReturnType<ReturnType<typeof getSupabaseBrowserClient>["channel"]> | null>(null);
-
-  // Initial fetch
-  useEffect(() => {
-    if (!activeProject?.id) return;
-    const supabase = getSupabaseBrowserClient();
-
-    async function fetchLatestRun() {
+  // ── Scan run — React Query active polling + Supabase Realtime push fallback ──
+  const runQuery = useQuery({
+    queryKey: ["prompt_scan_run", activeProject?.id],
+    enabled: Boolean(activeProject?.id),
+    refetchInterval: (query) => {
+      const run = query.state.data as any;
+      return (run?.status === "running" || run?.status === "pending") ? 3000 : false;
+    },
+    queryFn: async () => {
+      const supabase = getSupabaseBrowserClient();
       const { data } = await supabase
         .from("prompt_scan_runs" as any)
         .select("*")
@@ -252,12 +250,19 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      setScanRun(data ?? null);
-    }
+      return data as any;
+    },
+  });
 
-    fetchLatestRun();
+  const isScanActive = runQuery.data?.status === "running" || runQuery.data?.status === "pending";
 
-    // Subscribe to INSERT + UPDATE on prompt_scan_runs for this project
+  const realtimeChannelRef = useRef<ReturnType<ReturnType<typeof getSupabaseBrowserClient>["channel"]> | null>(null);
+
+  // Subscribe to INSERT + UPDATE on prompt_scan_runs to update React Query cache instantly
+  useEffect(() => {
+    if (!activeProject?.id) return;
+    const supabase = getSupabaseBrowserClient();
+
     const channel = supabase
       .channel(`scan_run_${activeProject.id}`)
       .on(
@@ -271,25 +276,10 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
         (payload: any) => {
           const updated = payload.new as any;
           if (!updated?.id) return;
-          setScanRun((prev: any) => {
-            // Only replace if this is the same run or a newer one
+          qc.setQueryData(["prompt_scan_run", activeProject.id], (prev: any) => {
             if (!prev || updated.created_at >= prev.created_at) return updated;
             return prev;
           });
-          // When scan completes, refresh dependent queries and notify user
-          if (updated.status === "done" || updated.status === "failed") {
-            qc.invalidateQueries({ queryKey: ["prompt_scan_results", activeProject!.id] });
-            qc.invalidateQueries({ queryKey: ["aeo_citations", activeProject!.id] });
-            qc.invalidateQueries({ queryKey: ["query_fanouts", activeProject!.id] });
-            qc.invalidateQueries({ queryKey: ["aeo_content_gaps", activeProject!.id] });
-            if (updated.status === "done") {
-              const mentioned = updated.brand_mentioned_count ?? 0;
-              const total = updated.completed ?? 0;
-              toast.success(`Scan complete! ${mentioned}/${total} queries mentioned your brand.`);
-            } else {
-              toast.error(`Scan failed: ${updated.error || "Unknown error"}`);
-            }
-          }
         },
       )
       .subscribe();
@@ -299,13 +289,35 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProject?.id]);
+  }, [activeProject?.id, qc]);
 
-  // Thin wrapper so the rest of the component can keep using runQuery.data shape
-  const runQuery = { data: scanRun };
+  // Track status transitions to show toasts and invalidate dependent queries
+  const prevStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeProject?.id) return;
+    const status = runQuery.data?.status;
+    const prevStatus = prevStatusRef.current;
 
-  const isScanActive = runQuery.data?.status === "running" || runQuery.data?.status === "pending";
+    if (status !== prevStatus) {
+      prevStatusRef.current = status;
+      if (prevStatus === "running" || prevStatus === "pending") {
+        if (status === "done" || status === "failed") {
+          qc.invalidateQueries({ queryKey: ["prompt_scan_results", activeProject.id] });
+          qc.invalidateQueries({ queryKey: ["aeo_citations", activeProject.id] });
+          qc.invalidateQueries({ queryKey: ["query_fanouts", activeProject.id] });
+          qc.invalidateQueries({ queryKey: ["aeo_content_gaps", activeProject.id] });
+
+          if (status === "done") {
+            const mentioned = runQuery.data?.brand_mentioned_count ?? 0;
+            const total = runQuery.data?.completed ?? 0;
+            toast.success(`Scan complete! ${mentioned}/${total} queries mentioned your brand.`);
+          } else {
+            toast.error(`Scan failed: ${runQuery.data?.error || "Unknown error"}`);
+          }
+        }
+      }
+    }
+  }, [runQuery.data?.status, activeProject?.id, qc]);
 
   const resultsQuery = useQuery({
     queryKey: ["prompt_scan_results", activeProject?.id],
@@ -712,7 +724,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
         throw new Error(errData.error || `Server returned ${res.status}`);
       }
       // Immediately show progress UI
-      setScanRun((prev: any) => ({
+      qc.setQueryData(["prompt_scan_run", activeProject.id], (prev: any) => ({
         ...prev,
         status: "running",
         completed: 0,
