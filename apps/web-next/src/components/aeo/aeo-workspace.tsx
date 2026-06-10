@@ -703,6 +703,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
           project_id: activeProject.id,
           brand_name: activeProject.brand_name || activeProject.name,
           models: DEFAULT_MODELS,
+          competitors: ["sitefire.ai", "higoodie.com", "scrunch.com"],
         }),
       });
 
