@@ -842,6 +842,52 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
         .scan-check { animation:scan-check-in .5s cubic-bezier(.175,.885,.32,1.275) both }
       `}</style>
 
+      {/* ── Always-visible Prompt Seeding Controls ────────────────────────── */}
+      <div className="rounded-2xl border border-slate-150 bg-white p-5 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-violet-600" /> Prompt Scanner Controls
+            </h3>
+            <p className="text-xs font-medium text-slate-400">
+              Bootstrap prompts, then dispatch scans against AI engines.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleSeedDefaults}
+              disabled={seeding || scanning || isScanActive}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-violet-600" /> Seed baseline prompts
+            </button>
+            <button
+              type="button"
+              onClick={handleSeedCompetitors}
+              disabled={seeding || scanning || isScanActive}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              <Plus className="h-3.5 w-3.5 text-emerald-600" /> Add competitor pack
+            </button>
+            {!isScanActive && runQuery.data?.status !== "done" && runQuery.data?.status !== "failed" && (
+              <button
+                type="button"
+                onClick={handleRunScan}
+                disabled={scanning || seeding}
+                className="flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 text-xs font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                {scanning ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin text-white" /> Starting...</>
+                ) : (
+                  <><Play className="h-3.5 w-3.5 text-white" /> Run Active Scan</>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {isScanActive ? (
         /* ── LIVE SCAN PROGRESS CARD ──────────────────────────────────────── */
         <div className="scan-card-active rounded-2xl border border-violet-200/60 p-6 shadow-lg space-y-5 relative overflow-hidden">
@@ -1089,68 +1135,16 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
         </div>
       ) : (
         /* ── DEFAULT: NOT YET RUN ────────────────────────────────────────── */
-        <div className="rounded-2xl border border-slate-150 bg-white p-6 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-50 pb-4">
-            <div className="space-y-1">
-              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <Cpu className="h-5 w-5 text-violet-600" /> Prompt Scanner Controls
-              </h3>
-              <p className="text-xs font-medium text-slate-400">
-                Run manual or scheduled brand scans against active AI engines and extract structured reference tables.
-              </p>
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/30 p-8 shadow-sm">
+          <div className="flex flex-col items-center text-center space-y-4">
+            <div className="h-14 w-14 rounded-2xl bg-violet-50 flex items-center justify-center">
+              <Brain className="h-7 w-7 text-violet-600" />
             </div>
-            <span className="flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-3 py-1 text-xs font-bold text-slate-500 shadow-sm">
-              <HelpCircle className="h-3.5 w-3.5 text-slate-400" /> Not Run Yet
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <p className="text-sm font-medium text-slate-600 leading-relaxed">
-                Before running visibility scans, make sure to bootstrap your active prompt database. You can populate baseline B2B prompts or inject competitor comparison templates.
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-black text-slate-800">Ready to Scan</h3>
+              <p className="text-xs text-slate-500 max-w-md leading-relaxed">
+                Seed your prompt database using the controls above, then click <strong className="text-slate-700">Run Active Scan</strong> to query ChatGPT, Gemini, Perplexity, and Claude for brand visibility analysis.
               </p>
-              <div className="flex flex-wrap gap-2.5">
-                <button
-                  type="button"
-                  onClick={handleSeedDefaults}
-                  disabled={seeding || scanning}
-                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50"
-                >
-                  <Sparkles className="h-3.5 w-3.5 text-violet-600" /> Seed baseline prompts
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSeedCompetitors}
-                  disabled={seeding || scanning}
-                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50"
-                >
-                  <Plus className="h-3.5 w-3.5 text-emerald-600" /> Add competitor pack
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-slate-50 p-5 flex flex-col justify-between gap-4 border border-slate-200/40">
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Scanner Engine Dispatch</h4>
-                <p className="text-xs font-semibold text-slate-400">
-                  Models triggered: ChatGPT, Gemini, Perplexity, Anthropic Claude.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-end gap-4 pt-2">
-                <button
-                  type="button"
-                  onClick={handleRunScan}
-                  disabled={scanning || seeding}
-                  className="flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 text-xs font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50"
-                >
-                  {scanning ? (
-                    <><Loader2 className="h-3.5 w-3.5 animate-spin text-white" /> Starting...</>
-                  ) : (
-                    <><Play className="h-3.5 w-3.5 text-white" /> Run Active Scan</>
-                  )}
-                </button>
-              </div>
             </div>
           </div>
         </div>
