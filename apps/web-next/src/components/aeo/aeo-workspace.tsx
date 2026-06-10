@@ -826,14 +826,270 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
         </div>
       </div>
 
-      {/* Main Scanner Section */}
-      <div className="rounded-2xl border border-slate-150 bg-white shadow-sm overflow-hidden">
-        {/* Animated gradient top bar when scanning */}
-        {isScanActive && (
-          <div className="h-1 w-full bg-gradient-to-r from-violet-500 via-purple-500 to-indigo-500" style={{ backgroundSize: '200% 100%', animation: 'shimmer 2s linear infinite' }} />
-        )}
+      {/* ── Premium Scanner Section with Live Progress ────────────────────── */}
+      <style>{`
+        @keyframes scan-gradient { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
+        @keyframes scan-pulse { 0%,100%{opacity:.45;transform:scale(.92)} 50%{opacity:1;transform:scale(1)} }
+        @keyframes scan-dot { 0%{box-shadow:0 0 0 0 rgba(139,92,246,.45)} 70%{box-shadow:0 0 0 8px rgba(139,92,246,0)} 100%{box-shadow:0 0 0 0 rgba(139,92,246,0)} }
+        @keyframes scan-shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+        @keyframes scan-typing { 0%{opacity:0;transform:translateY(6px)} 100%{opacity:1;transform:translateY(0)} }
+        @keyframes scan-check-in { 0%{opacity:0;transform:scale(0)} 100%{opacity:1;transform:scale(1)} }
+        .scan-card-active { background:linear-gradient(135deg,rgba(139,92,246,.04),rgba(59,130,246,.04),rgba(16,185,129,.04)); animation:scan-gradient 6s ease infinite; background-size:200% 200% }
+        .scan-dot-ping { animation:scan-dot 1.8s infinite }
+        .scan-model-pulse { animation:scan-pulse 2.4s ease-in-out infinite }
+        .scan-shimmer::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.4),transparent); animation:scan-shimmer 2s infinite }
+        .scan-result-in { animation:scan-typing .4s ease-out both }
+        .scan-check { animation:scan-check-in .5s cubic-bezier(.175,.885,.32,1.275) both }
+      `}</style>
 
-        <div className="p-6 space-y-6">
+      {isScanActive ? (
+        /* ── LIVE SCAN PROGRESS CARD ──────────────────────────────────────── */
+        <div className="scan-card-active rounded-2xl border border-violet-200/60 p-6 shadow-lg space-y-5 relative overflow-hidden">
+          {/* Shimmer overlay */}
+          <div className="absolute inset-0 pointer-events-none opacity-30 scan-shimmer" />
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 relative z-10">
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2.5">
+                <div className="relative">
+                  <Cpu className="h-5 w-5 text-violet-600" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-violet-500 scan-dot-ping" />
+                </div>
+                Scanning AI Engines...
+              </h3>
+              <p className="text-xs font-medium text-slate-500">
+                Querying {DEFAULT_MODELS.length} AI models with {promptsQuery.data?.length || 0} brand prompts
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5 rounded-full bg-violet-100/80 border border-violet-200 px-4 py-1.5 text-xs font-bold text-violet-700 shadow-sm">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-600" />
+                {typeof runQuery.data?.completed === "number" && typeof runQuery.data?.total_prompts === "number"
+                  ? `${runQuery.data.completed} / ${runQuery.data.total_prompts}`
+                  : "Initializing..."}
+              </span>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="relative z-10 space-y-2">
+            <div className="h-2.5 w-full rounded-full bg-slate-200/60 overflow-hidden relative">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-violet-500 via-blue-500 to-emerald-500 transition-all duration-700 ease-out relative scan-shimmer"
+                style={{
+                  width: `${runQuery.data?.total_prompts > 0 ? Math.max(3, Math.round(((runQuery.data?.completed ?? 0) / runQuery.data.total_prompts) * 100)) : 5}%`,
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
+              <span>
+                {runQuery.data?.total_prompts > 0
+                  ? `${Math.round(((runQuery.data?.completed ?? 0) / runQuery.data.total_prompts) * 100)}% complete`
+                  : "Starting scan..."}
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {runQuery.data?.total_prompts > 0
+                  ? `~${Math.max(1, Math.ceil(((runQuery.data.total_prompts - (runQuery.data?.completed ?? 0)) * 1.5) / 60))} min remaining`
+                  : "Estimating..."}
+              </span>
+            </div>
+          </div>
+
+          {/* Model status grid */}
+          <div className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {DEFAULT_MODELS.map((model, idx) => {
+              const info = getModelInfo(model);
+              const completed = runQuery.data?.completed ?? 0;
+              const promptCount = promptsQuery.data?.length || 5;
+              // Each model gets promptCount queries; estimate which model is currently active
+              const modelStart = idx * promptCount;
+              const modelEnd = (idx + 1) * promptCount;
+              const modelDone = Math.max(0, Math.min(promptCount, completed - modelStart));
+              const isActive = completed >= modelStart && completed < modelEnd;
+              const isDone = completed >= modelEnd;
+
+              return (
+                <div
+                  key={model}
+                  className={`rounded-xl border p-3.5 flex items-center gap-3 transition-all duration-500 ${
+                    isDone
+                      ? `${info.bg} ${info.border} shadow-sm`
+                      : isActive
+                      ? `bg-white/80 border-violet-200 shadow-md scan-model-pulse`
+                      : "bg-slate-50/50 border-slate-100"
+                  }`}
+                >
+                  <div className="relative shrink-0">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDone ? info.color : isActive ? "bg-violet-100" : "bg-slate-100"}`}>
+                      {isDone ? (
+                        <CheckCircle2 className="h-4 w-4 text-white scan-check" />
+                      ) : isActive ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
+                      ) : (
+                        <Clock className="h-4 w-4 text-slate-400" />
+                      )}
+                    </div>
+                    {isActive && <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-violet-500 scan-dot-ping" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className={`text-[11px] font-black truncate ${isDone ? info.text : isActive ? "text-violet-700" : "text-slate-400"}`}>
+                      {info.name}
+                    </p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                      {isDone ? "Complete" : isActive ? `${modelDone}/${promptCount} queries` : "Queued"}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Live activity log */}
+          <div className="relative z-10 rounded-xl bg-slate-900/[.03] border border-slate-200/50 p-4 space-y-2">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+              <Database className="h-3 w-3" /> Live Activity
+            </p>
+            <div className="space-y-1.5 max-h-[80px] overflow-y-auto">
+              {(() => {
+                const completed = runQuery.data?.completed ?? 0;
+                const logs = [];
+                if (completed > 0) {
+                  const currentModelIdx = Math.min(DEFAULT_MODELS.length - 1, Math.floor(completed / Math.max(1, promptsQuery.data?.length || 5)));
+                  const modelInfo = getModelInfo(DEFAULT_MODELS[currentModelIdx]);
+                  logs.push({ text: `Querying ${modelInfo.name}...`, active: true });
+                }
+                if (completed > 2) logs.push({ text: `${runQuery.data?.brand_mentioned_count ?? 0} brand mentions detected so far`, active: false });
+                if (completed === 0) logs.push({ text: "Initializing scan workers...", active: true });
+                return logs.map((log, i) => (
+                  <div key={i} className="scan-result-in flex items-center gap-2 text-[10px] font-semibold text-slate-500" style={{ animationDelay: `${i * 0.15}s` }}>
+                    {log.active ? (
+                      <span className="w-1.5 h-1.5 rounded-full bg-violet-500 scan-dot-ping shrink-0" />
+                    ) : (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    )}
+                    {log.text}
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      ) : runQuery.data?.status === "done" ? (
+        /* ── SCAN COMPLETE SUMMARY CARD ──────────────────────────────────── */
+        <div className="rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-500/[.03] to-blue-500/[.03] p-6 shadow-sm space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center scan-check">
+                  <CheckCircle2 className="h-4 w-4 text-white" />
+                </div>
+                Scan Complete
+              </h3>
+              <p className="text-xs font-medium text-slate-500">
+                {runQuery.data?.finished_at
+                  ? `Finished ${new Date(runQuery.data.finished_at).toLocaleString()}`
+                  : "All queries processed successfully"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleRunScan}
+              disabled={scanning || seeding}
+              className="flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 text-xs font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              {scanning ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin text-white" /> Starting...</>
+              ) : (
+                <><RefreshCw className="h-3.5 w-3.5 text-white" /> Re-Scan</>
+              )}
+            </button>
+          </div>
+
+          {/* Summary metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="rounded-xl border border-violet-100 bg-white p-4 text-center space-y-1 shadow-sm">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Total Queries</p>
+              <p className="text-2xl font-black text-violet-700">{runQuery.data?.completed ?? 0}</p>
+            </div>
+            <div className="rounded-xl border border-emerald-100 bg-white p-4 text-center space-y-1 shadow-sm">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Brand Mentions</p>
+              <p className="text-2xl font-black text-emerald-700">{runQuery.data?.brand_mentioned_count ?? 0}</p>
+            </div>
+            <div className="rounded-xl border border-blue-100 bg-white p-4 text-center space-y-1 shadow-sm">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Mention Rate</p>
+              <p className="text-2xl font-black text-blue-700">
+                {runQuery.data?.completed > 0
+                  ? `${Math.round(((runQuery.data?.brand_mentioned_count ?? 0) / runQuery.data.completed) * 100)}%`
+                  : "—"}
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-100 bg-white p-4 text-center space-y-1 shadow-sm">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Models Scanned</p>
+              <p className="text-2xl font-black text-amber-700">{(runQuery.data?.models || DEFAULT_MODELS).length}</p>
+            </div>
+          </div>
+
+          {/* Per-model visibility bars */}
+          {modelBreakdown.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {modelBreakdown.map((m) => {
+                const info = getModelInfo(m.model);
+                return (
+                  <div key={m.model} className="rounded-xl border border-slate-100 bg-white p-3.5 flex items-center gap-3 shadow-sm">
+                    <div className={`w-8 h-8 rounded-lg ${info.color} flex items-center justify-center shrink-0`}>
+                      <span className="text-[10px] font-black text-white">{m.visibility}%</span>
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-800">{info.name}</span>
+                        <span className="text-[10px] font-bold text-slate-400">{m.mentions}/{m.total}</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${info.color} transition-all duration-1000`}
+                          style={{ width: `${m.visibility}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : runQuery.data?.status === "failed" ? (
+        /* ── SCAN FAILED CARD ────────────────────────────────────────────── */
+        <div className="rounded-2xl border border-red-200/60 bg-gradient-to-br from-red-500/[.03] to-orange-500/[.03] p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-red-500 flex items-center justify-center">
+                  <AlertCircle className="h-4 w-4 text-white" />
+                </div>
+                Scan Failed
+              </h3>
+              <p className="text-xs font-medium text-red-600">
+                {runQuery.data?.error || "An unexpected error occurred during the scan."}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleRunScan}
+              disabled={scanning || seeding}
+              className="flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 text-xs font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              {scanning ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin text-white" /> Starting...</>
+              ) : (
+                <><RefreshCw className="h-3.5 w-3.5 text-white" /> Retry Scan</>
+              )}
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* ── DEFAULT: NOT YET RUN ────────────────────────────────────────── */
+        <div className="rounded-2xl border border-slate-150 bg-white p-6 shadow-sm space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-50 pb-4">
             <div className="space-y-1">
               <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
@@ -843,261 +1099,62 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
                 Run manual or scheduled brand scans against active AI engines and extract structured reference tables.
               </p>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {isScanActive ? (
-                <span className="flex items-center gap-1.5 rounded-full bg-purple-50 border border-purple-100 px-3 py-1 text-xs font-bold text-purple-600 shadow-sm animate-pulse">
-                  <Loader2 className="h-3 w-3 animate-spin text-purple-600" /> Scanner Running...
-                </span>
-              ) : runQuery.data?.status === "done" ? (
-                <span className="flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-3 py-1 text-xs font-bold text-emerald-600 shadow-sm">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Scanner Idle
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-3 py-1 text-xs font-bold text-slate-500 shadow-sm">
-                  <HelpCircle className="h-3.5 w-3.5 text-slate-400" /> Not Run Yet
-                </span>
-              )}
-            </div>
+            <span className="flex items-center gap-1 rounded-full bg-slate-50 border border-slate-200 px-3 py-1 text-xs font-bold text-slate-500 shadow-sm">
+              <HelpCircle className="h-3.5 w-3.5 text-slate-400" /> Not Run Yet
+            </span>
           </div>
 
-          {/* ── PREMIUM LIVE PROGRESS PANEL ───────────────────────────────── */}
-          {isScanActive ? (() => {
-            const completed = runQuery.data?.completed ?? 0;
-            const total = runQuery.data?.total_prompts ?? 20;
-            const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-            const brandMentioned = runQuery.data?.brand_mentioned_count ?? 0;
-            const currentModelIdx = completed % DEFAULT_MODELS.length;
-            const currentPromptIdx = Math.floor(completed / DEFAULT_MODELS.length);
-
-            // Determine which models are done/active/pending
-            const getModelStatus = (idx: number) => {
-              const modelStart = currentPromptIdx * DEFAULT_MODELS.length + idx;
-              if (modelStart < completed) return "done";
-              if (modelStart === completed) return "active";
-              return "pending";
-            };
-
-            const steps = [
-              { label: "Loading active prompts", done: true },
-              { label: "Creating scan run record", done: completed > 0 },
-              { label: `Querying AI models (${completed}/${total})`, done: completed >= total },
-              { label: "Extracting citations & mentions", done: completed >= total },
-              { label: "Generating query fanouts", done: pct >= 90 },
-              { label: "Persisting gap analysis", done: false },
-            ];
-
-            return (
-              <div className="space-y-6">
-                {/* Glass card with gradient background */}
-                <div className="relative rounded-2xl overflow-hidden">
-                  {/* Animated background */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-violet-600/5 via-purple-600/5 to-indigo-600/5" />
-                  <div className="absolute inset-0 opacity-30" style={{ background: 'radial-gradient(circle at 20% 50%, rgba(124,58,237,0.1), transparent 50%), radial-gradient(circle at 80% 50%, rgba(99,102,241,0.1), transparent 50%)' }} />
-
-                  <div className="relative border border-violet-100/50 rounded-2xl p-6 space-y-6">
-                    {/* Top row: Progress ring + stats */}
-                    <div className="flex flex-col md:flex-row items-center gap-6">
-                      {/* Animated progress ring */}
-                      <div className="relative flex items-center justify-center shrink-0">
-                        <svg className="w-28 h-28 transform -rotate-90" style={{ filter: 'drop-shadow(0 0 8px rgba(124,58,237,0.2))' }}>
-                          <circle cx="56" cy="56" r="48" stroke="#f1f5f9" strokeWidth="6" fill="transparent" />
-                          <circle
-                            cx="56" cy="56" r="48"
-                            stroke="url(#scanGrad)"
-                            strokeWidth="6"
-                            fill="transparent"
-                            strokeDasharray={301.6}
-                            strokeDashoffset={301.6 - (301.6 * pct) / 100}
-                            strokeLinecap="round"
-                            style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4,0,0.2,1)' }}
-                          />
-                          <defs>
-                            <linearGradient id="scanGrad" x1="0" y1="0" x2="1" y2="1">
-                              <stop offset="0%" stopColor="#7c3aed" />
-                              <stop offset="100%" stopColor="#6366f1" />
-                            </linearGradient>
-                          </defs>
-                        </svg>
-                        <div className="absolute flex flex-col items-center">
-                          <span className="text-2xl font-black text-slate-900">{pct}%</span>
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Complete</span>
-                        </div>
-                        {/* Orbiting dot */}
-                        <div className="absolute w-28 h-28" style={{ animation: 'spin 3s linear infinite' }}>
-                          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-0.5 w-2.5 h-2.5 rounded-full bg-violet-500 shadow-lg shadow-violet-500/50" />
-                        </div>
-                      </div>
-
-                      {/* Stats grid */}
-                      <div className="flex-1 w-full">
-                        <div className="grid grid-cols-3 gap-3">
-                          <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-100 p-3 text-center">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Queries Sent</p>
-                            <p className="text-xl font-black text-slate-900 mt-0.5">{completed}<span className="text-slate-300 text-sm">/{total}</span></p>
-                          </div>
-                          <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-emerald-100 p-3 text-center">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-emerald-500">Brand Hits</p>
-                            <p className="text-xl font-black text-emerald-600 mt-0.5">{brandMentioned}</p>
-                          </div>
-                          <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-violet-100 p-3 text-center">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-violet-500">Hit Rate</p>
-                            <p className="text-xl font-black text-violet-600 mt-0.5">{completed > 0 ? Math.round((brandMentioned / completed) * 100) : 0}%</p>
-                          </div>
-                        </div>
-
-                        {/* Full-width progress bar */}
-                        <div className="mt-4 space-y-1.5">
-                          <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-indigo-500 relative"
-                              style={{ width: `${Math.max(3, pct)}%`, transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)', backgroundSize: '200% 100%', animation: 'shimmer 2s linear infinite' }}
-                            >
-                              <div className="absolute inset-0 bg-white/20 rounded-full" style={{ animation: 'pulse 2s ease-in-out infinite' }} />
-                            </div>
-                          </div>
-                          <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
-                            <Loader2 className="h-3 w-3 animate-spin text-violet-500" />
-                            Scanning prompt {currentPromptIdx + 1} of {Math.ceil(total / DEFAULT_MODELS.length)} across {DEFAULT_MODELS.length} AI engines...
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Per-model status row */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {DEFAULT_MODELS.map((model, idx) => {
-                        const info = getModelInfo(model);
-                        const status = getModelStatus(idx);
-                        return (
-                          <div
-                            key={model}
-                            className={`rounded-xl border p-3 flex items-center gap-3 transition-all duration-500 ${
-                              status === "active"
-                                ? `${info.bg} ${info.border} shadow-md ring-2 ring-offset-1 ring-violet-200`
-                                : status === "done"
-                                ? `${info.bg} ${info.border} opacity-80`
-                                : "bg-slate-50 border-slate-100 opacity-50"
-                            }`}
-                          >
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${status === "active" ? info.color : status === "done" ? info.color : "bg-slate-200"}`}>
-                              {status === "active" ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-white" />
-                              ) : status === "done" ? (
-                                <CheckCircle2 className="h-4 w-4 text-white" />
-                              ) : (
-                                <Clock className="h-4 w-4 text-slate-400" />
-                              )}
-                            </div>
-                            <div>
-                              <p className={`text-[10px] font-black uppercase tracking-wider ${status === "active" ? info.text : status === "done" ? info.text : "text-slate-400"}`}>
-                                {info.name}
-                              </p>
-                              <p className="text-[9px] font-bold text-slate-400">
-                                {status === "active" ? "Querying..." : status === "done" ? "Complete" : "Waiting"}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Activity steps feed */}
-                    <div className="rounded-xl bg-white/60 backdrop-blur-sm border border-slate-100 p-4">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Live Activity</p>
-                      <div className="space-y-2">
-                        {steps.map((step, idx) => (
-                          <div key={idx} className="flex items-center gap-2.5 text-xs font-semibold">
-                            {step.done ? (
-                              <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                            ) : idx === steps.findIndex(s => !s.done) ? (
-                              <Loader2 className="h-4 w-4 animate-spin text-violet-500 shrink-0" />
-                            ) : (
-                              <div className="h-4 w-4 rounded-full border-2 border-slate-200 shrink-0" />
-                            )}
-                            <span className={step.done ? "text-slate-600" : idx === steps.findIndex(s => !s.done) ? "text-violet-700 font-bold" : "text-slate-350"}>
-                              {step.label}
-                            </span>
-                            {idx === steps.findIndex(s => !s.done) && (
-                              <span className="inline-flex gap-0.5 ml-1">
-                                <span className="w-1 h-1 rounded-full bg-violet-400" style={{ animation: 'pulse 1.4s ease-in-out infinite' }} />
-                                <span className="w-1 h-1 rounded-full bg-violet-400" style={{ animation: 'pulse 1.4s ease-in-out 0.2s infinite' }} />
-                                <span className="w-1 h-1 rounded-full bg-violet-400" style={{ animation: 'pulse 1.4s ease-in-out 0.4s infinite' }} />
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })() : (
-            /* ── IDLE STATE: Original Controls ─────────────────────────────── */
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <p className="text-sm font-medium text-slate-600 leading-relaxed">
-                  Before running visibility scans, make sure to bootstrap your active prompt database. You can populate baseline B2B prompts or inject competitor comparison templates.
-                </p>
-                <div className="flex flex-wrap gap-2.5">
-                  <button
-                    type="button"
-                    onClick={handleSeedDefaults}
-                    disabled={seeding || scanning}
-                    className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50"
-                  >
-                    <Sparkles className="h-3.5 w-3.5 text-violet-600" /> Seed baseline prompts
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSeedCompetitors}
-                    disabled={seeding || scanning}
-                    className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50"
-                  >
-                    <Plus className="h-3.5 w-3.5 text-emerald-600" /> Add competitor pack
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-slate-50 p-5 flex flex-col justify-between gap-4 border border-slate-200/40">
-                <div className="space-y-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Scanner Engine Dispatch</h4>
-                  <p className="text-xs font-semibold text-slate-400">
-                    Models triggered: ChatGPT, Gemini, Perplexity, Anthropic Claude.
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between gap-4 pt-2">
-                  <div className="text-xs text-slate-500 font-medium">
-                    Latest Status: <span className="font-extrabold text-slate-800 uppercase">{runQuery.data?.status || "NONE"}</span>
-                    {typeof runQuery.data?.completed === "number" && typeof runQuery.data?.total_prompts === "number" && (
-                      <span className="font-bold text-violet-600 ml-1">
-                        ({runQuery.data.completed}/{runQuery.data.total_prompts} processed)
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRunScan}
-                    disabled={scanning || seeding || isScanActive}
-                    className="flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 text-xs font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50"
-                  >
-                    {scanning ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-white" /> Starting...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="h-3.5 w-3.5 text-white" /> Run Active Scan
-                      </>
-                    )}
-                  </button>
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <p className="text-sm font-medium text-slate-600 leading-relaxed">
+                Before running visibility scans, make sure to bootstrap your active prompt database. You can populate baseline B2B prompts or inject competitor comparison templates.
+              </p>
+              <div className="flex flex-wrap gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleSeedDefaults}
+                  disabled={seeding || scanning}
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-violet-600" /> Seed baseline prompts
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSeedCompetitors}
+                  disabled={seeding || scanning}
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  <Plus className="h-3.5 w-3.5 text-emerald-600" /> Add competitor pack
+                </button>
               </div>
             </div>
-          )}
+
+            <div className="rounded-2xl bg-slate-50 p-5 flex flex-col justify-between gap-4 border border-slate-200/40">
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Scanner Engine Dispatch</h4>
+                <p className="text-xs font-semibold text-slate-400">
+                  Models triggered: ChatGPT, Gemini, Perplexity, Anthropic Claude.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-4 pt-2">
+                <button
+                  type="button"
+                  onClick={handleRunScan}
+                  disabled={scanning || seeding}
+                  className="flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 text-xs font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  {scanning ? (
+                    <><Loader2 className="h-3.5 w-3.5 animate-spin text-white" /> Starting...</>
+                  ) : (
+                    <><Play className="h-3.5 w-3.5 text-white" /> Run Active Scan</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Tab-specific views */}
       {view === "overview" && (

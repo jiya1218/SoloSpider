@@ -208,14 +208,3 @@ h1, h2, h3, h4, h5, h6 {
 .hero-d2 { animation-delay: 0.2s; }
 .hero-d3 { animation-delay: 0.35s; }
 .hero-d4 { animation-delay: 0.45s; }
-
-/* AEO SCANNER PROGRESS ANIMATIONS */
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
