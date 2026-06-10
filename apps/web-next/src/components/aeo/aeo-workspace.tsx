@@ -308,6 +308,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
   const resultsQuery = useQuery({
     queryKey: ["prompt_scan_results", activeProject?.id],
     enabled: Boolean(activeProject?.id),
+    refetchInterval: isScanActive ? 3000 : false,
     queryFn: async () => {
       const supabase = getSupabaseBrowserClient();
       const { data } = await supabase
@@ -707,8 +708,17 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Server returned ${res.status}`);
       }
-
-      toast.success("Prompt scan initiated — results will appear automatically when done.");
+      // Immediately show progress UI
+      setScanRun((prev: any) => ({
+        ...prev,
+        status: "running",
+        completed: 0,
+        total_prompts: (promptsQuery.data?.length || 5) * DEFAULT_MODELS.length,
+        brand_mentioned_count: 0,
+        finished_at: null,
+        error: null,
+      }));
+      toast.success("Prompt scan initiated — results will stream in live below.");
       qc.invalidateQueries({ queryKey: ["prompt_scan_run", activeProject.id] });
       qc.invalidateQueries({ queryKey: ["prompt_scan_results", activeProject.id] });
       qc.invalidateQueries({ queryKey: ["aeo_citations", activeProject.id] });
@@ -991,34 +1001,77 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
             })}
           </div>
 
-          {/* Live activity log */}
-          <div className="relative z-10 rounded-xl bg-slate-900/[.03] border border-slate-200/50 p-4 space-y-2">
-            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-              <Database className="h-3 w-3" /> Live Activity
-            </p>
-            <div className="space-y-1.5 max-h-[80px] overflow-y-auto">
-              {(() => {
-                const completed = runQuery.data?.completed ?? 0;
-                const logs = [];
-                if (completed > 0) {
-                  const currentModelIdx = Math.min(DEFAULT_MODELS.length - 1, Math.floor(completed / Math.max(1, promptsQuery.data?.length || 5)));
-                  const modelInfo = getModelInfo(DEFAULT_MODELS[currentModelIdx]);
-                  logs.push({ text: `Querying ${modelInfo.name}...`, active: true });
-                }
-                if (completed > 2) logs.push({ text: `${runQuery.data?.brand_mentioned_count ?? 0} brand mentions detected so far`, active: false });
-                if (completed === 0) logs.push({ text: "Initializing scan workers...", active: true });
-                return logs.map((log, i) => (
-                  <div key={i} className="scan-result-in flex items-center gap-2 text-[10px] font-semibold text-slate-500" style={{ animationDelay: `${i * 0.15}s` }}>
-                    {log.active ? (
-                      <span className="w-1.5 h-1.5 rounded-full bg-violet-500 scan-dot-ping shrink-0" />
-                    ) : (
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                    )}
-                    {log.text}
-                  </div>
-                ));
-              })()}
+          {/* ── Live Streaming Results Feed ────────────────────────────────── */}
+          <div className="relative z-10 rounded-xl bg-white/70 border border-slate-200/60 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+                <Database className="h-3 w-3 text-violet-600" /> Live Results Stream
+              </p>
+              <span className="text-[9px] font-bold text-slate-400">
+                {(resultsQuery.data || []).length} results · {runQuery.data?.brand_mentioned_count ?? 0} mentions
+              </span>
             </div>
+
+            {(resultsQuery.data || []).length === 0 ? (
+              <div className="flex items-center gap-3 py-3">
+                <div className="flex gap-1">
+                  <span className="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0s' }} />
+                  <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '0.15s' }} />
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '0.3s' }} />
+                </div>
+                <span className="text-[11px] font-semibold text-slate-400">Waiting for first results...</span>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                {(resultsQuery.data || []).slice(0, 15).map((row: any, idx: number) => {
+                  const info = getModelInfo(row.model);
+                  return (
+                    <div
+                      key={row.id}
+                      className="scan-result-in rounded-lg border border-slate-100 bg-white p-3 flex items-center gap-3 text-xs shadow-sm"
+                      style={{ animationDelay: `${Math.min(idx * 0.08, 0.6)}s` }}
+                    >
+                      <div className={`w-7 h-7 rounded-lg ${info.color} flex items-center justify-center shrink-0`}>
+                        {row.brand_mentioned ? (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                        ) : (
+                          <AlertCircle className="h-3.5 w-3.5 text-white/70" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-[9px] font-extrabold uppercase tracking-wider ${info.text}`}>{info.name}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider ${
+                            row.brand_mentioned
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-slate-100 text-slate-400"
+                          }`}>
+                            {row.brand_mentioned ? "✓ Mentioned" : "✗ No mention"}
+                          </span>
+                          {row.mention_sentiment && (
+                            <span className={`text-[8px] font-bold uppercase ${
+                              row.mention_sentiment === "positive" ? "text-emerald-500" : row.mention_sentiment === "negative" ? "text-red-500" : "text-slate-400"
+                            }`}>
+                              {row.mention_sentiment}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] font-medium text-slate-500 truncate mt-0.5">{row.prompt_text}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* Typing indicator at bottom */}
+                <div className="flex items-center gap-2 py-1 pl-1">
+                  <div className="flex gap-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0s' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0.15s' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0.3s' }} />
+                  </div>
+                  <span className="text-[9px] font-semibold text-slate-400">Scanning more queries...</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : runQuery.data?.status === "done" ? (
