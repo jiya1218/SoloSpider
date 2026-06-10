@@ -305,6 +305,8 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
   // Thin wrapper so the rest of the component can keep using runQuery.data shape
   const runQuery = { data: scanRun };
 
+  const isScanActive = runQuery.data?.status === "running" || runQuery.data?.status === "pending";
+
   const resultsQuery = useQuery({
     queryKey: ["prompt_scan_results", activeProject?.id],
     enabled: Boolean(activeProject?.id),
@@ -763,7 +765,6 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
     </div>
   );
 
-  const isScanActive = runQuery.data?.status === "running" || runQuery.data?.status === "pending";
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8 select-none">
