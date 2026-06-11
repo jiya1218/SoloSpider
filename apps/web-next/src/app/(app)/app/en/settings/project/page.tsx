@@ -56,7 +56,6 @@ export default function ProjectSettingsPage() {
           brand_logo_url: brandLogoUrl.trim() || null,
           og_image_url: ogImageUrl.trim() || null,
           favicon_url: faviconUrl.trim() || null,
-          updated_at: new Date().toISOString(),
         })
         .eq("id", activeProject.id);
 
@@ -101,7 +100,7 @@ export default function ProjectSettingsPage() {
   }
 
   // Determine active logo to show in real time preview
-  const resolvedPreviewLogo = brandLogoUrl || ogImageUrl || faviconUrl || "";
+  const resolvedPreviewLogo = brandLogoUrl || ogImageUrl || "";
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8 select-none">

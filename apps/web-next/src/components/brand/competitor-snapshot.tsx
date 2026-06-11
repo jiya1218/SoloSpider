@@ -13,10 +13,12 @@ const competitors = [
 export function CompetitorSnapshot() {
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 h-full">
-      <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-        <Users2 className="w-4 h-4 text-indigo-500" />
-        Competitor Snapshot
-      </h3>
+      <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+        <h3 className="font-bold text-slate-900 flex items-center gap-2">
+          <Users2 className="w-4 h-4 text-indigo-500" />
+          Competitor Snapshot
+        </h3>
+      </div>
       
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">

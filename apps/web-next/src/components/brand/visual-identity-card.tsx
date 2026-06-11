@@ -28,7 +28,6 @@ export function VisualIdentityCard({ project }: { project: Project | null }) {
     }
     if (cleanDomain) {
       urls.push(`https://logo.clearbit.com/${cleanDomain}`);
-      urls.push(`https://www.google.com/s2/favicons?domain=${cleanDomain}&sz=128`);
     }
     if (logoAttempt < urls.length) {
       return urls[logoAttempt];

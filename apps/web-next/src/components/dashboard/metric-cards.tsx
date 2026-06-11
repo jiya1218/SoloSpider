@@ -5,6 +5,7 @@ import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import { useProjects } from "@/hooks/useProjects";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { HelpCircle } from "lucide-react";
 
 interface CrawledPage {
   id: string;
@@ -36,26 +37,36 @@ export function CircularProgress({ value, label, subtitle, color, isPositive, pe
   const strokeDashoffset = circumference - (value / 100) * circumference;
 
   return (
-    <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between h-full">
-      <h3 className="text-slate-800 font-semibold text-sm mb-4">{label}</h3>
+    <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between h-full min-h-[160px] hover:scale-[1.02] duration-300 transition-all">
+      <div className="group relative flex items-center justify-between mb-4 border-b border-slate-50 pb-2">
+        <h3 className="text-slate-400 font-black text-[10px] uppercase tracking-widest">{label}</h3>
+        <div className="relative">
+          <HelpCircle className="h-3.5 w-3.5 text-slate-350 cursor-help hover:text-slate-650 transition-colors" />
+          <div className="absolute bottom-full right-0 mb-2 w-52 hidden group-hover:block bg-slate-900 text-white text-[10px] p-2.5 rounded-xl shadow-xl z-20 font-medium leading-normal">
+            {label === "AI Visibility Score" 
+              ? "Your brand's recommendation share across AI search engines. Run an active scan in AEO Workspace to update."
+              : "Your overall technical SEO health based on page crawl results."}
+          </div>
+        </div>
+      </div>
       <div className="flex items-center gap-6">
-        <div className="relative w-24 h-24 flex items-center justify-center">
-          <svg className="w-full h-full transform -rotate-90">
+        <div className="relative w-20 h-20 flex items-center justify-center shrink-0">
+          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 80 80">
             <circle
-              cx="48"
-              cy="48"
+              cx="40"
+              cy="40"
               r={radius}
               stroke="currentColor"
-              strokeWidth="8"
+              strokeWidth="6"
               fill="transparent"
               className="text-slate-100"
             />
             <circle
-              cx="48"
-              cy="48"
+              cx="40"
+              cy="40"
               r={radius}
               stroke={color}
-              strokeWidth="8"
+              strokeWidth="6"
               fill="transparent"
               strokeDasharray={circumference}
               strokeDashoffset={strokeDashoffset}
@@ -64,15 +75,19 @@ export function CircularProgress({ value, label, subtitle, color, isPositive, pe
             />
           </svg>
           <div className="absolute flex flex-col items-center justify-center">
-            <span className="text-2xl font-bold text-slate-900">{value}</span>
-            <span className="text-[10px] text-slate-500 font-medium">/100</span>
+            <span className="text-xl font-black text-slate-900">{value}</span>
+            <span className="text-[9px] text-slate-400 font-bold">/100</span>
           </div>
         </div>
         <div>
-          <p className={`font-bold text-lg mb-1`} style={{ color }}>{subtitle}</p>
-          {percentage && (
-            <p className={`text-xs font-semibold ${isPositive ? 'text-emerald-500' : 'text-red-500'}`}>
-              {isPositive ? '+' : ''}{percentage} from last week ↗
+          <p className="font-black text-base tracking-tight mb-1" style={{ color }}>{subtitle}</p>
+          {percentage ? (
+            <p className={`text-[10px] font-black px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 w-fit flex items-center gap-0.5`}>
+              +{percentage}% from last week ↗
+            </p>
+          ) : (
+            <p className="text-[10px] font-bold text-slate-400">
+              {label === "AI Visibility Score" ? "Run AEO Scan to update" : "Crawled pages health"}
             </p>
           )}
         </div>
@@ -84,23 +99,25 @@ export function CircularProgress({ value, label, subtitle, color, isPositive, pe
 export function TrendCard({ label, value, trend, trendValue, color, data, gradientId }: { label: string, value: string, trend: 'up' | 'down', trendValue: string, color: string, data: any[], gradientId: string }) {
   const isPositive = trend === 'up';
   return (
-    <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex flex-col h-full">
-      <div className="mb-2">
-        <h3 className="text-slate-600 font-semibold text-sm mb-2">{label}</h3>
-        <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold text-slate-900">{value}</span>
-          <span className={`text-xs font-bold ${isPositive ? 'text-emerald-500' : 'text-red-500'}`}>
-            {isPositive ? '+' : ''}{trendValue}
+    <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between h-full min-h-[160px] hover:scale-[1.02] duration-300 transition-all">
+      <div>
+        <h3 className="text-slate-400 font-black text-[10px] uppercase tracking-widest mb-2.5">{label}</h3>
+        <div className="flex items-center gap-3">
+          <span className="text-3xl font-black text-slate-900 tracking-tight">{value}</span>
+          <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg flex items-center gap-0.5 ${
+            isPositive ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+          }`}>
+            {isPositive ? '↑' : '↓'} {trendValue}
           </span>
         </div>
       </div>
       
-      <div className="h-16 mt-auto -mx-2">
+      <div className="h-14 mt-4 -mx-2">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data}>
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                <stop offset="5%" stopColor={color} stopOpacity={0.2} />
                 <stop offset="95%" stopColor={color} stopOpacity={0} />
               </linearGradient>
             </defs>
@@ -115,7 +132,9 @@ export function TrendCard({ label, value, trend, trendValue, color, data, gradie
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      <p className="text-[10px] text-slate-400 mt-2 font-medium">vs last 7 days</p>
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-50">
+        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">vs last 7 days</span>
+      </div>
     </div>
   );
 }

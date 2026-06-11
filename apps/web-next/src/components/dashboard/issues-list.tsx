@@ -177,7 +177,9 @@ export function IssuesList() {
               <div className={`p-1.5 rounded-md ${getBgColor(issue.color)}`}>
                 {issue.icon}
               </div>
-              <span className="text-sm font-semibold text-slate-700 leading-tight max-w-[150px] md:max-w-none truncate">{issue.title}</span>
+              <span className="text-sm font-semibold text-slate-700 leading-tight truncate max-w-[160px] sm:max-w-[200px] md:max-w-[250px] lg:max-w-[160px] xl:max-w-[240px]" title={issue.title}>
+                {issue.title}
+              </span>
             </div>
             <div className="flex items-center gap-3">
               <span className={`text-xs font-bold flex items-center gap-1.5 ${issue.color}`}>

@@ -48,10 +48,12 @@ export function BrandQuickActions() {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 h-full flex flex-col">
-      <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-        <Zap className="w-4 h-4 text-indigo-500" />
-        Quick Actions
-      </h3>
+      <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+        <h3 className="font-bold text-slate-900 flex items-center gap-2">
+          <Zap className="w-4 h-4 text-indigo-500" />
+          Quick Actions
+        </h3>
+      </div>
       
       <div className="grid grid-cols-1 gap-3 flex-1 content-start">
         <button 
