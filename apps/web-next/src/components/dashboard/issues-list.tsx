@@ -42,7 +42,7 @@ export function IssuesList() {
         .select("*")
         .eq("project_id", activeProject!.id)
         .order("crawled_at", { ascending: false });
-      
+
       if (error) throw error;
       return (data || []) as CrawledPage[];
     },
@@ -172,26 +172,28 @@ export function IssuesList() {
       </div>
       <div className="p-5 pt-3 flex-1 flex flex-col gap-2">
         {computedIssues.map((issue) => (
-          <div key={issue.id} className="flex items-center justify-between py-2.5 hover:bg-slate-50 rounded-lg transition-colors px-2 -mx-2">
-            <div className="flex items-center gap-3">
-              <div className={`p-1.5 rounded-md ${getBgColor(issue.color)}`}>
+          <div key={issue.id} className="flex items-center justify-between gap-3 py-2.5 hover:bg-slate-50 rounded-lg transition-colors px-2 -mx-2 min-w-0">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className={`p-1.5 rounded-md shrink-0 ${getBgColor(issue.color)}`}>
                 {issue.icon}
               </div>
-              <span className="text-sm font-semibold text-slate-700 leading-tight truncate max-w-[160px] sm:max-w-[200px] md:max-w-[250px] lg:max-w-[160px] xl:max-w-[240px]" title={issue.title}>
+              <span className="text-sm font-semibold text-slate-705 leading-tight truncate flex-1 min-w-0" title={issue.title}>
                 {issue.title}
               </span>
             </div>
-            <div className="flex items-center gap-3">
-              <span className={`text-xs font-bold flex items-center gap-1.5 ${issue.color}`}>
+            <div className="flex items-center gap-3 shrink-0">
+              <span className={`text-xs font-bold flex items-center gap-1.5 shrink-0 ${issue.color}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${issue.color.replace('text-', 'bg-')}`}></span>
                 {issue.severity}
               </span>
-              <Link 
-                href="/app/en/seo"
-                className="px-2.5 py-1 text-xs font-bold text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50 transition-colors shrink-0"
-              >
-                Fix Now
-              </Link>
+              {issue.id !== "all-clear" && issue.id !== "no-data" && (
+                <Link 
+                  href="/app/en/seo"
+                  className="px-2.5 py-1 text-xs font-bold text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50 transition-colors shrink-0"
+                >
+                  Fix Now
+                </Link>
+              )}
             </div>
           </div>
         ))}
