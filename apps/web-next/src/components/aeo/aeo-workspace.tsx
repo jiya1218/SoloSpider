@@ -866,8 +866,10 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
         .scan-check { animation:scan-check-in .5s cubic-bezier(.175,.885,.32,1.275) both }
       `}</style>
 
-      {/* ── Always-visible Prompt Seeding Controls ────────────────────────── */}
-      <div className="rounded-2xl border border-slate-150 bg-white p-5 shadow-sm">
+      {view === "overview" && (
+        <>
+          {/* ── Always-visible Prompt Seeding Controls ────────────────────────── */}
+          <div className="rounded-2xl border border-slate-150 bg-white p-5 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="space-y-1">
             <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
@@ -1279,6 +1281,8 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* Tab-specific views */}
