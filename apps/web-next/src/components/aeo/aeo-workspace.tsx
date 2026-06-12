@@ -1719,10 +1719,10 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
                     return matchSearch && matchSchema;
                   })
                   .map(page => (
-                    <div key={page.id} className="hover:bg-slate-50/50 transition-all">
+                    <div key={page.url} className="hover:bg-slate-50/50 transition-all">
                       <div
                         className="grid grid-cols-12 gap-2 px-4 py-3 items-center cursor-pointer text-xs font-semibold text-slate-650"
-                        onClick={() => setCrawlerExpandedId(crawlerExpandedId === page.id ? null : page.id)}
+                        onClick={() => setCrawlerExpandedId(crawlerExpandedId === page.url ? null : page.url)}
                       >
                         <div className="col-span-1 flex items-center gap-1.5">
                           <span className={`w-2 h-2 rounded-full inline-block ${
@@ -1754,7 +1754,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
                         </div>
                         <div className="col-span-1 text-right flex justify-end items-center gap-1">
                           <span className="text-[9px] font-black uppercase tracking-widest text-slate-300">{page.source}</span>
-                          {crawlerExpandedId === page.id ? (
+                          {crawlerExpandedId === page.url ? (
                             <ChevronDown className="h-3 w-3 text-slate-450" />
                           ) : (
                             <ChevronRight className="h-3 w-3 text-slate-350" />
@@ -1763,7 +1763,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
                       </div>
 
                       {/* Detail expanded */}
-                      {crawlerExpandedId === page.id && (() => {
+                      {crawlerExpandedId === page.url && (() => {
                         // Dynamically calculate the 11 tests from page metrics based on Sitefire's methodology
                         const wordCount = page.word_count || 0;
                         const hasFAQ = page.has_faq_schema;
@@ -1793,7 +1793,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
                           (t3_visible) * 1;
                           
                         const score = Math.round((weightedSum / 250) * 100);
-                        const curTab = activeGeoTab[page.id] || "authority";
+                        const curTab = activeGeoTab[page.url] || "authority";
                         
                         const tests = [
                           { id: "citations", name: "Source Citations", category: "authority", score: t1_citations, weight: "T1 (3x)", desc: "Density of external academic/industry reference citations on the page.", before: "We offer top quality crm integrations.", after: "Our crm integrates with over 45 third-party platforms (CRM Survey 2026)." },
@@ -1911,7 +1911,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
                                     {(["authority", "readability", "structure"] as const).map(tab => (
                                       <button
                                         key={tab}
-                                        onClick={() => setActiveGeoTab(prev => ({ ...prev, [page.id]: tab }))}
+                                        onClick={() => setActiveGeoTab(prev => ({ ...prev, [page.url]: tab }))}
                                         className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
                                           curTab === tab
                                             ? "bg-white text-slate-800 shadow-sm"
