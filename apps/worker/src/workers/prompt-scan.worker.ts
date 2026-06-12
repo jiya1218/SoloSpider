@@ -40,6 +40,44 @@ async function processPromptScanJob(job: Job<PromptScanJobData>): Promise<object
     throw new Error("No active prompts found. Add prompts in the Prompt Lab tab first.");
   }
 
+  // Load project domain metadata & target market details for grounding
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, name, domain, brand_name, brand_description, brand_tagline")
+    .eq("id", project_id)
+    .single();
+
+  // Load crawled pages for RAG grounding context
+  const { data: crawledPages } = await supabase
+    .from("crawled_pages")
+    .select("url, title, meta_desc, h1")
+    .eq("project_id", project_id)
+    .eq("status_code", 200)
+    .limit(15);
+
+  const brandNameGround = project?.brand_name || project?.name || brand_name;
+  const brandDomainGround = project?.domain || "";
+  const brandDescriptionGround = project?.brand_description || project?.brand_tagline || "A leading platform in its space.";
+
+  let groundingContext = `\nWeb Search Grounding Context:\nBrand Information:\n- Brand Name: ${brandNameGround}\n- Website Domain: ${brandDomainGround}\n- Description: ${brandDescriptionGround}\n\nTarget Competitors:\n${mergedCompetitors.map(c => `- ${c}`).join("\n")}\n\nIndexed Web Pages for ${brandNameGround}:\n`;
+
+  if (crawledPages && crawledPages.length > 0) {
+    groundingContext += crawledPages.map(p => `* URL: ${p.url}\n  Title: ${p.title || ""}\n  Description: ${p.meta_desc || ""}\n  Heading: ${p.h1 || ""}`).join("\n");
+  } else {
+    groundingContext += "No indexed web pages available yet.";
+  }
+
+  const systemPrompt = `You are a search engine assistant (like ChatGPT Search, Perplexity, or Gemini Search) with access to real-time search results and web indices.
+To answer the user's query, you must utilize the following search engine index records and grounding context:
+
+${groundingContext}
+
+Instructions:
+1. Provide a comprehensive, detailed, and realistic response to the search query.
+2. Integrate citations, links, or mentions of the brand (${brandNameGround}) and its competitors (${mergedCompetitors.join(", ")}) where relevant to the user query, as a search engine would.
+3. Be objective. Cite specific tools, products, companies, and brand names where appropriate.
+4. Maintain a natural, authoritative search engine synthesis tone.`;
+
   // Create tasks list representing prompt x model combinations
   const tasks: Array<{
     prompt: { id: string; prompt: string; topic: string };
@@ -131,7 +169,7 @@ async function processPromptScanJob(job: Job<PromptScanJobData>): Promise<object
 
     try {
       console.log(`[PromptScanWorker] Querying model: ${modelKey} for prompt "${prompt.prompt.slice(0, 50)}…"`);
-      const res = await queryModel(modelKey, prompt.prompt);
+      const res = await queryModel(modelKey, prompt.prompt, systemPrompt);
       responseText = res.text;
       latencyMs    = res.latencyMs;
     } catch (e) {
@@ -140,7 +178,7 @@ async function processPromptScanJob(job: Job<PromptScanJobData>): Promise<object
       console.error(`[PromptScanWorker] Model query error [${modelKey}]: ${errorMessage}`);
     }
 
-    const citations = parseCitations(responseText, brand_name, mergedCompetitors);
+    const citations = parseCitations(responseText, brand_name, mergedCompetitors, brandDomainGround);
     if (citations.brandMentioned) {
       brandMentionedCount++;
     }

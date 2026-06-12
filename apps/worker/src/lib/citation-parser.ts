@@ -25,7 +25,8 @@ const NEGATIVE_WORDS = [
 export function parseCitations(
   responseText: string,
   brandName: string,
-  competitors: string[] = []
+  competitors: string[] = [],
+  brandDomain?: string
 ): CitationResult {
   if (!responseText || !brandName) {
     return {
@@ -36,24 +37,62 @@ export function parseCitations(
 
   const lower        = responseText.toLowerCase();
   const brandLower   = brandName.toLowerCase();
-  const escapedBrand = brandLower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const brandRegex   = new RegExp(escapedBrand, "g");
+  const brandClean   = brandLower.replace(/\s+/g, "");
 
-  const mentionCount   = (lower.match(brandRegex) ?? []).length;
-  const brandMentioned = mentionCount > 0;
+  // Resolve brand domain variation
+  let domainClean = "";
+  let domainNoExt = "";
+  if (brandDomain) {
+    domainClean = brandDomain.toLowerCase()
+      .replace(/^(https?:\/\/)?(www\.)?/, "")
+      .replace(/\/$/, "");
+    domainNoExt = domainClean.split(".")[0];
+  }
+
+  // Helper to check if a string contains any brand variation
+  const matchesBrand = (str: string) => {
+    const s = str.toLowerCase();
+    return (
+      s.includes(brandLower) ||
+      s.includes(brandClean) ||
+      (domainClean && s.includes(domainClean)) ||
+      (domainNoExt && s.includes(domainNoExt))
+    );
+  };
 
   let mentionPosition: number | null = null;
   let mentionContext:  string | null  = null;
 
+  // Split into sentences (handles . ! ? followed by whitespace or end)
+  const sentences = responseText.split(/(?<=[.!?])\s+|(?<=[.!?])$/);
+  for (let i = 0; i < sentences.length; i++) {
+    if (matchesBrand(sentences[i])) {
+      mentionPosition = i + 1;
+      mentionContext  = sentences[i].trim().slice(0, 500);
+      break;
+    }
+  }
+
+  const brandMentioned = mentionPosition !== null;
+
+  // Count mentions in the entire response text
+  let mentionCount = 0;
   if (brandMentioned) {
-    // Split into sentences (handles . ! ? followed by whitespace or end)
-    const sentences = responseText.split(/(?<=[.!?])\s+|(?<=[.!?])$/);
-    for (let i = 0; i < sentences.length; i++) {
-      if (sentences[i].toLowerCase().includes(brandLower)) {
-        mentionPosition = i + 1;
-        mentionContext  = sentences[i].trim().slice(0, 500);
-        break;
+    const escapedBrand = brandLower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const brandRegex = new RegExp(escapedBrand, "g");
+    mentionCount = (lower.match(brandRegex) ?? []).length;
+    
+    if (mentionCount === 0) {
+      const targets = [brandClean, domainClean, domainNoExt].filter(Boolean);
+      for (const target of targets) {
+        const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const count = (lower.match(new RegExp(escaped, "g")) ?? []).length;
+        if (count > 0) {
+          mentionCount = count;
+          break;
+        }
       }
+      if (mentionCount === 0) mentionCount = 1;
     }
   }
 

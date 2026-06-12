@@ -60,16 +60,28 @@ function extractLinks(html: string, base: string, origin: string): string[] {
   return [...new Set(urls)];
 }
 
+function decodeHtmlEntities(str: string | null): string | null {
+  if (!str) return null;
+  return str
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&nbsp;/gi, " ");
+}
+
 function parseMeta(html: string): Omit<CrawledPageData, "url" | "status_code" | "source"> {
   const titleM  = /<title[^>]*>([^<]+)<\/title>/i.exec(html);
-  const title   = titleM ? titleM[1].trim().slice(0, 250) : null;
+  const title   = titleM ? decodeHtmlEntities(titleM[1].trim().slice(0, 250)) : null;
 
   const metaM   = /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i.exec(html)
                ?? /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i.exec(html);
-  const meta_desc = metaM ? metaM[1].trim().slice(0, 500) : null;
+  const meta_desc = metaM ? decodeHtmlEntities(metaM[1].trim().slice(0, 500)) : null;
 
   const h1M = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html);
-  const h1  = h1M ? h1M[1].replace(/<[^>]+>/g, "").trim().slice(0, 250) : null;
+  const h1  = h1M ? decodeHtmlEntities(h1M[1].replace(/<[^>]+>/g, "").trim().slice(0, 250)) : null;
 
   const text       = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   const word_count = text.trim().split(" ").filter(Boolean).length;
