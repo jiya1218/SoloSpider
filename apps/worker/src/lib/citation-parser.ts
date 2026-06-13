@@ -121,3 +121,43 @@ export function parseCitations(
     competitorsMentioned,
   };
 }
+
+export interface ExtractedCitation {
+  title: string;
+  url: string;
+}
+
+export function extractCitationsFromText(text: string): ExtractedCitation[] {
+  if (!text) return [];
+  const citations: ExtractedCitation[] = [];
+  const seenUrls = new Set<string>();
+
+  // 1. Match Markdown links [Anchor Text](URL)
+  const markdownRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g;
+  let match;
+  while ((match = markdownRegex.exec(text)) !== null) {
+    const title = match[1].trim();
+    const url = match[2].trim().replace(/[\.\,\)\?\]\}]$/, "");
+    if (!seenUrls.has(url)) {
+      seenUrls.add(url);
+      citations.push({ title, url });
+    }
+  }
+
+  // 2. Match raw URLs
+  const rawUrlRegex = /(https?:\/\/[^\s\)\"\'\>\,\u201c\u201d]+)/g;
+  const rawMatches = text.match(rawUrlRegex) || [];
+  for (const url of rawMatches) {
+    const cleanUrl = url.trim().replace(/[\.\,\)\?\]\}]$/, "");
+    if (!seenUrls.has(cleanUrl)) {
+      seenUrls.add(cleanUrl);
+      let domain = cleanUrl;
+      try {
+        domain = new URL(cleanUrl).hostname.replace(/^www\./, "");
+      } catch {}
+      citations.push({ title: domain, url: cleanUrl });
+    }
+  }
+
+  return citations;
+}

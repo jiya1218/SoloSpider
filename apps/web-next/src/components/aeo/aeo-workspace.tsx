@@ -67,6 +67,18 @@ const extractBrandUrls = (text: string, domain: string) => {
   return Array.from(uniqueUrls);
 };
 
+const extractAllUrls = (text: string) => {
+  if (!text) return [];
+  const urlRegex = /(https?:\/\/[^\s\)\"\'\>\,\u201c\u201d]+)/g;
+  const matches = text.match(urlRegex) || [];
+  const uniqueUrls = new Set<string>();
+  for (const url of matches) {
+    const cleanUrl = url.replace(/[\.\,\)\?\]\}]$/, "");
+    uniqueUrls.add(cleanUrl);
+  }
+  return Array.from(uniqueUrls);
+};
+
 function AeoTrendChart({
   title,
   data,
@@ -615,12 +627,15 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
       );
       
       const citedUrls = matchingResults.flatMap(r => 
-        extractBrandUrls(r.response_text || "", activeProject.domain)
+        extractAllUrls(r.response_text || "")
       );
       const uniqueCitedUrls = Array.from(new Set(citedUrls));
       
       const targetCited = matchingResults.some(r => r.brand_mentioned);
-      const targetSourced = uniqueCitedUrls.length > 0;
+      const targetSourced = uniqueCitedUrls.some(url => {
+        const domainClean = activeProject.domain?.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, "").replace(/\/$/, "");
+        return domainClean && url.toLowerCase().includes(domainClean);
+      });
       
       const searchVolume = getSearchVolume(p.prompt);
       
@@ -2589,9 +2604,20 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
                     <p className="text-slate-800 font-medium text-xs leading-relaxed">
                       Query: "{row.query}"
                     </p>
-                    <p className="text-[10px] text-slate-400 font-medium">
-                      Title: {row.cited_title || "Unknown Link"}
+                    <p className="text-[10px] text-slate-450 font-bold">
+                      Source Title: <span className="text-slate-700">{row.cited_title || "Unknown Link"}</span>
                     </p>
+                    {row.metadata?.url && (
+                      <a 
+                        href={row.metadata.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="inline-flex items-center gap-1 text-[10px] text-violet-650 hover:underline font-bold mt-1"
+                      >
+                        <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                        {row.metadata.url}
+                      </a>
+                    )}
                   </div>
                   <div className="shrink-0 text-right">
                     <span className="text-[10px] text-slate-400 font-bold block">

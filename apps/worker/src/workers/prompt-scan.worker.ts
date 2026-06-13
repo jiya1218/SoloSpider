@@ -2,7 +2,7 @@ import { Worker, Job } from "bullmq";
 import { redis } from "../config.js";
 import { supabase } from "../lib/supabase.js";
 import { queryModel, MODEL_MAP } from "../lib/openrouter.js";
-import { parseCitations } from "../lib/citation-parser.js";
+import { parseCitations, extractCitationsFromText } from "../lib/citation-parser.js";
 import { generateFanouts } from "../lib/fanout-generator.js";
 import { persistGapsForRun } from "../lib/gap-detector.js";
 import type { PromptScanJobData } from "../queues.js";
@@ -253,21 +253,56 @@ Instructions:
       latency_ms:           latencyMs,
     });
 
-    // Back-fill aeo_citations for backward compatibility
-    if (citations.brandMentioned) {
-      await supabase.from("aeo_citations").insert({
+    // Parse and save all cited links/domains in the response text as individual citations
+    const extCitations = extractCitationsFromText(responseText);
+    const citationRows: any[] = [];
+
+    // Add general parsed citations
+    extCitations.forEach((c, idx) => {
+      citationRows.push({
+        project_id,
+        provider:    modelKey,
+        query:       prompt.prompt,
+        cited_title: c.title,
+        position:    idx + 1,
+        metadata: {
+          url:       c.url,
+          run_id:    runId,
+          source:    "prompt_scan_worker",
+        },
+      });
+    });
+
+    // Also guarantee brand mention is logged if not explicitly caught in markdown links
+    const brandClean = brand_name.toLowerCase().trim();
+    const hasBrandRow = extCitations.some(c => 
+      c.title.toLowerCase().includes(brandClean) || 
+      c.url.toLowerCase().includes(brandClean) ||
+      (brandDomainGround && c.url.toLowerCase().includes(brandDomainGround.toLowerCase()))
+    );
+
+    if (citations.brandMentioned && !hasBrandRow) {
+      citationRows.push({
         project_id,
         provider:    modelKey,
         query:       prompt.prompt,
         cited_title: brand_name,
-        position:    citations.mentionPosition,
+        position:    citations.mentionPosition ?? 1,
         metadata: {
+          url:       brandDomainGround ? `https://${brandDomainGround}` : "",
           context:   citations.mentionContext,
           sentiment: citations.mentionSentiment,
           run_id:    runId,
           source:    "prompt_scan_worker",
         },
       });
+    }
+
+    if (citationRows.length > 0) {
+      const { error: citErr } = await supabase.from("aeo_citations").insert(citationRows);
+      if (citErr) {
+        console.warn(`[PromptScanWorker] Failed to insert citations: ${citErr.message}`);
+      }
     }
 
     // Fanout generation — once per prompt, fire-and-forget in background
