@@ -219,6 +219,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
   const qc = useQueryClient();
   const { activeProject } = useProjects();
   const [seeding, setSeeding] = useState(false);
+  const [generatingPrompts, setGeneratingPrompts] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [crawlerSearch, setCrawlerSearch] = useState("");
   const [crawlerFilterSchema, setCrawlerFilterSchema] = useState<"all" | "faq" | "howto" | "no-schema">("all");
@@ -869,6 +870,30 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
     }
   };
 
+  // Handle generating prompts from AI
+  const handleGenerateAIPrompts = async () => {
+    setGeneratingPrompts(true);
+    const toastId = toast.loading("🤖 Querying Gemini to generate custom AEO prompts from crawled content...");
+    try {
+      const res = await fetch("/api/aeo/generate-prompts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ projectId: activeProject.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate prompts");
+      
+      toast.success(`✨ Success! Generated ${data.generated} custom AEO prompts. ${data.inserted} new prompts added.`, { id: toastId });
+      qc.invalidateQueries({ queryKey: ["aeo_prompts", activeProject.id] });
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to generate AI prompts", { id: toastId });
+    } finally {
+      setGeneratingPrompts(false);
+    }
+  };
+
   // Handle Run Scanner Scan — pre-seeds prompts if inventory is empty
   const handleRunScan = async () => {
     setScanning(true);
@@ -1067,8 +1092,20 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
+              onClick={handleGenerateAIPrompts}
+              disabled={generatingPrompts || seeding || scanning || isScanActive}
+              className="flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 hover:bg-violet-100 px-4 py-2.5 text-xs font-black text-violet-700 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              {generatingPrompts ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin text-violet-650" /> Generating AI Prompts...</>
+              ) : (
+                <><Sparkles className="h-3.5 w-3.5 text-violet-600" /> Generate with AI</>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={handleSeedDefaults}
-              disabled={seeding || scanning || isScanActive}
+              disabled={generatingPrompts || seeding || scanning || isScanActive}
               className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50"
             >
               <Sparkles className="h-3.5 w-3.5 text-violet-600" /> Seed baseline prompts
@@ -1076,7 +1113,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
             <button
               type="button"
               onClick={handleSeedCompetitors}
-              disabled={seeding || scanning || isScanActive}
+              disabled={generatingPrompts || seeding || scanning || isScanActive}
               className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50"
             >
               <Plus className="h-3.5 w-3.5 text-emerald-600" /> Add competitor pack
@@ -1085,7 +1122,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
               <button
                 type="button"
                 onClick={handleRunScan}
-                disabled={scanning || seeding}
+                disabled={scanning || seeding || generatingPrompts}
                 className="flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 text-xs font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50"
               >
                 {scanning ? (
@@ -1295,7 +1332,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
             <button
               type="button"
               onClick={handleRunScan}
-              disabled={scanning || seeding}
+              disabled={scanning || seeding || generatingPrompts}
               className="flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 text-xs font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50"
             >
               {scanning ? (
@@ -1440,7 +1477,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
             <button
               type="button"
               onClick={handleRunScan}
-              disabled={scanning || seeding}
+              disabled={scanning || seeding || generatingPrompts}
               className="flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 text-xs font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50"
             >
               {scanning ? (

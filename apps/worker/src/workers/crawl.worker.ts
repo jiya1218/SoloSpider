@@ -2,6 +2,7 @@ import { Worker, Job } from "bullmq";
 import { redis } from "../config.js";
 import { supabase } from "../lib/supabase.js";
 import { discoverUrls, crawlPage, type CrawledPageData } from "../lib/crawler.js";
+import { generateAndSaveAiPrompts } from "../lib/prompt-generator.js";
 import type { CrawlJobData } from "../queues.js";
 
 const BATCH_SIZE = 5;
@@ -75,6 +76,11 @@ async function processCrawlJob(job: Job<CrawlJobData>): Promise<object> {
     pages_crawled: pagesCrawled,
     finished_at: new Date().toISOString(),
   }).eq("id", runId);
+
+  await job.updateProgress(95);
+  await generateAndSaveAiPrompts(project_id).catch(err => {
+    console.error("[CrawlWorker] Automatic prompt generation failed:", err);
+  });
 
   await job.updateProgress(100);
 
