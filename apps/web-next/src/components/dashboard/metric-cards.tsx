@@ -213,7 +213,7 @@ export function MetricCards({ timeRange }: MetricCardsProps) {
     const pages = pagesForCalculation;
     const total = pages.length;
     if (total === 0) {
-      return { seoScore: 100, subtitle: "No Crawls", color: "#94a3b8" };
+      return { seoScore: 0, subtitle: "No Crawls", color: "#94a3b8" };
     }
 
     const brokenPages = pages.filter((p: CrawledPage) => p.status_code && p.status_code !== 200);
@@ -251,27 +251,28 @@ export function MetricCards({ timeRange }: MetricCardsProps) {
   }, [pagesForCalculation]);
 
   // Scaled traffic, impressions, and backlinks based on count of scanned pages
-  const trafficNum = scaleCount * 1200 + 4200;
+  const trafficNum = scaleCount === 0 ? 0 : scaleCount * 1200 + 4200;
   const trafficValue = trafficNum >= 1000000 
     ? (trafficNum / 1000000).toFixed(1) + "M"
     : trafficNum >= 1000 
       ? (trafficNum / 1000).toFixed(1) + "K" 
       : trafficNum.toString();
 
-  const impressionsNum = scaleCount * 45000 + 120000;
+  const impressionsNum = scaleCount === 0 ? 0 : scaleCount * 45000 + 120000;
   const impressionsValue = impressionsNum >= 1000000 
     ? (impressionsNum / 1000000).toFixed(1) + "M"
     : impressionsNum >= 1000 
       ? (impressionsNum / 1000).toFixed(1) + "K" 
       : impressionsNum.toString();
 
-  const backlinksNum = scaleCount * 12 + 45;
+  const backlinksNum = scaleCount === 0 ? 0 : scaleCount * 12 + 45;
   const backlinksValue = backlinksNum >= 1000 
     ? (backlinksNum / 1000).toFixed(1) + "K" 
     : backlinksNum.toString();
 
   // Dynamic sparkline curves matching current page count
   const sparklineTraffic = useMemo(() => {
+    if (scaleCount === 0) return Array(7).fill({ value: 0 });
     return [
       { value: Math.round(scaleCount * 80 + 350) },
       { value: Math.round(scaleCount * 110 + 400) },
@@ -284,6 +285,7 @@ export function MetricCards({ timeRange }: MetricCardsProps) {
   }, [scaleCount]);
 
   const sparklineImpressions = useMemo(() => {
+    if (scaleCount === 0) return Array(7).fill({ value: 0 });
     return [
       { value: Math.round(scaleCount * 4000 + 18000) },
       { value: Math.round(scaleCount * 5500 + 20000) },
@@ -296,6 +298,7 @@ export function MetricCards({ timeRange }: MetricCardsProps) {
   }, [scaleCount]);
 
   const sparklineBacklinks = useMemo(() => {
+    if (scaleCount === 0) return Array(7).fill({ value: 0 });
     return [
       { value: Math.round(scaleCount * 0.8 + 4.0) },
       { value: Math.round(scaleCount * 1.1 + 4.5) },
@@ -328,7 +331,7 @@ export function MetricCards({ timeRange }: MetricCardsProps) {
           label="Organic Traffic" 
           value={trafficValue} 
           trend="up" 
-          trendValue="18.6%" 
+          trendValue={scaleCount === 0 ? "0%" : "18.6%"} 
           color="#10b981" 
           data={sparklineTraffic}
           gradientId="trafficGradient"
@@ -339,7 +342,7 @@ export function MetricCards({ timeRange }: MetricCardsProps) {
           label="Total Impressions" 
           value={impressionsValue} 
           trend="up" 
-          trendValue="11.3%" 
+          trendValue={scaleCount === 0 ? "0%" : "11.3%"} 
           color="#8b5cf6" 
           data={sparklineImpressions}
           gradientId="impressionsGradient"
@@ -350,7 +353,7 @@ export function MetricCards({ timeRange }: MetricCardsProps) {
           label="Backlinks" 
           value={backlinksValue} 
           trend="up" 
-          trendValue="9.5%" 
+          trendValue={scaleCount === 0 ? "0%" : "9.5%"} 
           color="#3b82f6" 
           data={sparklineBacklinks}
           gradientId="backlinksGradient"

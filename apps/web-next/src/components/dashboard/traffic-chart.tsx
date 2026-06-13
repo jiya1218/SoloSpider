@@ -2,6 +2,9 @@
 
 import React, { useMemo } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { useQuery } from "@tanstack/react-query";
+import { useProjects } from "@/hooks/useProjects";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const data = [
   { name: 'May 12', organic: 22000, paid: 11000 },
@@ -18,9 +21,43 @@ interface TrafficChartProps {
 }
 
 export function TrafficChart({ timeRange }: TrafficChartProps) {
+  const { activeProject } = useProjects();
+
+  const crawledPagesQuery = useQuery({
+    queryKey: ["crawled_pages_count", activeProject?.id],
+    enabled: Boolean(activeProject?.id),
+    queryFn: async () => {
+      const supabase = getSupabaseBrowserClient();
+      const { data } = await supabase
+        .from("crawled_pages" as any)
+        .select("id")
+        .eq("project_id", activeProject!.id);
+      return data || [];
+    },
+  });
+
+  const hasData = (crawledPagesQuery.data || []).length > 0;
+
   const chartData = useMemo(() => {
     const dataPoints = [];
     const now = new Date();
+
+    if (!hasData) {
+      const size = timeRange === "today" ? 7 : timeRange === "30" ? 6 : timeRange === "90" ? 6 : 7;
+      for (let i = size - 1; i >= 0; i--) {
+        const d = new Date();
+        if (timeRange === "today") {
+          const hours = [8, 10, 12, 14, 16, 18, 20];
+          dataPoints.push({ name: `${hours[size - 1 - i]}:00`, organic: 0, paid: 0 });
+        } else {
+          const offset = timeRange === "30" ? i * 5 : timeRange === "90" ? i * 15 : i;
+          d.setDate(now.getDate() - offset);
+          const name = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          dataPoints.push({ name, organic: 0, paid: 0 });
+        }
+      }
+      return dataPoints;
+    }
     
     if (timeRange === "today") {
       // Hourly intervals
@@ -67,7 +104,7 @@ export function TrafficChart({ timeRange }: TrafficChartProps) {
       }
     }
     return dataPoints;
-  }, [timeRange]);
+  }, [timeRange, hasData]);
 
   const rangeLabel = timeRange === "today" 
     ? "Today" 

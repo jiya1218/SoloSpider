@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProjects } from "@/hooks/useProjects";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { seedAeoPrompts, buildDefaultAeoPrompts } from "@/lib/aeoPrompts";
+import { runAeoAnalysis } from "@/lib/aeo";
 import { toast } from "sonner";
 import { 
   LayoutDashboard, 
@@ -147,24 +148,76 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   ];
 
+  const triggerInitialAeoScan = async (project: {
+    id: string;
+    domain: string;
+    brand_name?: string | null;
+    name: string;
+    brand_description?: string | null;
+  }) => {
+    const supabase = getSupabaseBrowserClient();
+    const website = project.domain;
+    const resolvedBrandName = project.brand_name || project.name;
+    const topics = ["brand visibility", "ai search", "seo optimization"];
+
+    const { data: record, error: insertError } = await supabase
+      .from("aeo_analyses" as any)
+      .insert([
+        {
+          project_id: project.id,
+          website,
+          brand_name: resolvedBrandName,
+          topics,
+          status: "running",
+        },
+      ])
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+
+    const result = await runAeoAnalysis({
+      website,
+      brandName: resolvedBrandName,
+      topics,
+      brandDescription: project.brand_description || "",
+    });
+
+    await supabase
+      .from("aeo_analyses" as any)
+      .update({
+        status: "completed",
+        overall_score: result.overallScore,
+        ai_insights: result.providers,
+        category_scores: result.categoryScores,
+        recommendations: result.recommendations,
+        prompt_suggestions: result.promptSuggestions,
+      })
+      .eq("id", record.id);
+  };
+
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canAddProject) {
       toast.error(`Your ${currentPlan} plan is limited to ${projectLimit} project(s).`);
       return;
     }
+    const domainToCreate = newProjectDomain.trim();
+    const nameToCreate = newProjectName.trim();
+    if (!domainToCreate) return;
+
     setIsSubmitting(true);
     try {
       const created = await addProject.mutateAsync({
-        name: newProjectName || newProjectDomain,
-        domain: normalizeUrl(newProjectDomain),
-        brand_name: newProjectName || newProjectDomain,
+        name: nameToCreate || domainToCreate,
+        domain: normalizeUrl(domainToCreate),
+        brand_name: nameToCreate || domainToCreate,
       });
 
       try {
         await seedAeoPrompts(
           created.id,
-          buildDefaultAeoPrompts(newProjectName || newProjectDomain, normalizeUrl(newProjectDomain)),
+          buildDefaultAeoPrompts(nameToCreate || domainToCreate, normalizeUrl(domainToCreate)),
         );
       } catch (seedErr) {
         console.warn("Seeding defaults failed:", seedErr);
@@ -174,6 +227,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       setNewProjectDomain("");
       setNewProjectName("");
       setIsDialogOpen(false);
+
+      try {
+        await triggerInitialAeoScan(created as any);
+        toast.success("Initial AEO scan completed.");
+      } catch (scanErr: any) {
+        console.warn("Initial scan failed:", scanErr);
+      }
     } catch (err: any) {
       toast.error(err?.message || "Failed to create project");
     } finally {
@@ -392,7 +452,67 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className="flex-1 flex flex-col min-h-screen min-w-0 bg-transparent">
         {/* Content Box - direct render, transparent glass header is gone */}
         <div className="flex-1 p-6 lg:p-8 max-w-[1600px] w-full mx-auto">
-          {children}
+          {activeProject ? children : (
+            <div className="max-w-xl mx-auto my-12 md:my-20 p-8 md:p-10 rounded-3xl border border-slate-200 bg-white shadow-xl space-y-6 text-center">
+              <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-500 text-white flex items-center justify-center mx-auto shadow-lg shadow-indigo-500/20">
+                <Globe className="h-8 w-8" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Welcome to SoloSpider!</h2>
+                <p className="text-sm text-slate-500 font-semibold leading-relaxed">
+                  Start by adding your first project. Enter your website URL below to configure your SEO audit, AI search visibility tracking, and content workspaces.
+                </p>
+              </div>
+
+              <form onSubmit={handleCreateProject} className="space-y-4 text-left pt-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-650 uppercase tracking-wider">
+                    Website URL / Domain
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="example.com"
+                    value={newProjectDomain}
+                    onChange={(e) => setNewProjectDomain(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 placeholder-slate-400 focus:border-violet-600 focus:bg-white outline-none transition-all shadow-inner-sm"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-650 uppercase tracking-wider">
+                    Project / Brand Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="My Brand"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 placeholder-slate-400 focus:border-violet-600 focus:bg-white outline-none transition-all shadow-inner-sm"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || addProject.isPending}
+                  className="w-full h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg disabled:opacity-60 mt-6 cursor-pointer"
+                >
+                  {isSubmitting || addProject.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin text-white" />
+                      Creating Workspace...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4 text-white" />
+                      Create My First Project
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </main>
 
