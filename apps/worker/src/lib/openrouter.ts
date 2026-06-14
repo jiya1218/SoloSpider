@@ -4,7 +4,7 @@ const BASE_URL = "https://openrouter.ai/api/v1";
 
 export const MODEL_MAP: Record<string, string> = {
   chatgpt:    "openai/gpt-4o-mini",
-  gemini:     "google/gemini-2.0-flash-001",
+  gemini:     "google/gemini-2.5-flash",
   claude:     "anthropic/claude-3-haiku",
   perplexity: "perplexity/sonar",
   grok:       "x-ai/grok-3-mini-beta",
@@ -14,7 +14,8 @@ export const MODEL_MAP: Record<string, string> = {
 export async function queryModel(
   modelKey: string,
   prompt: string,
-  systemPrompt?: string
+  systemPrompt?: string,
+  maxTokens?: number
 ): Promise<{ text: string; latencyMs: number }> {
   const modelId = MODEL_MAP[modelKey];
   if (!modelId) throw new Error(`Unknown model key: ${modelKey}`);
@@ -34,7 +35,7 @@ export async function queryModel(
         { role: "system", content: systemPrompt ?? "You are a helpful assistant. Answer the question comprehensively. Mention specific products, tools, companies, and brand names where relevant." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 800,
+      max_tokens: maxTokens ?? 800,
       temperature: 0.3,
     }),
   });

@@ -37,6 +37,11 @@ export function BrandSummary({ project }: { project: Project | null }) {
     }
   }, [project?.id, project?.brand_description]);
 
+  const getCleanDescription = (desc?: string | null) => {
+    if (!desc) return "";
+    return desc.split("\n---\nMETADATA: ")[0];
+  };
+
   return (
     <div className="bg-indigo-50/50 rounded-xl border border-indigo-100 p-6 h-full flex flex-col justify-between relative overflow-hidden">
       <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
@@ -55,7 +60,7 @@ export function BrandSummary({ project }: { project: Project | null }) {
           </div>
         ) : (
           <p className="mt-4 text-sm font-semibold text-slate-700 leading-relaxed relative z-10">
-            {project?.brand_description || "No brand summary generated yet. Click 'Refresh Brand Data' to generate one."}
+            {getCleanDescription(project?.brand_description) || "No brand summary generated yet. Click 'Refresh Brand Data' to generate one."}
           </p>
         )}
       </div>

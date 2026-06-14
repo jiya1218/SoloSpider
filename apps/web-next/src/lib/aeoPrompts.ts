@@ -28,37 +28,46 @@ export const buildDefaultAeoPrompts = (brandName: string, domain: string): SeedP
   ];
 };
 
-export const buildCompetitorComparePrompts = (brandName: string, domain: string): SeedPrompt[] => {
+export const buildCompetitorComparePrompts = (brandName: string, domain: string, competitors?: string[]): SeedPrompt[] => {
   const safeBrand = brandName?.trim() || "this brand";
   const safeDomain = normalizeDomain(domain || safeBrand);
+  const comps = Array.isArray(competitors) && competitors.length > 0
+    ? competitors.map(c => normalizeDomain(c))
+    : ["sitefire.ai", "higoodie.com", "scrunch.com"];
+
+  const comp1 = comps[0] || "sitefire.ai";
+  const comp2 = comps[1] || "higoodie.com";
+  const comp3 = comps[2] || "scrunch.com";
+  const compListStr = comps.slice(0, 3).join(", ");
+
   return [
     {
       topic: "Competitive AEO Workflow",
-      prompt: `Compare ${safeBrand} vs sitefire.ai for AEO workflow depth, prompt scans, and execution speed.`,
+      prompt: `Compare ${safeBrand} vs ${comp1} for service depth, user satisfaction, and execution speed.`,
       rationale: "Tracks direct competitor consideration in AI answers.",
       category: "competitor",
     },
     {
       topic: "Platform Comparison",
-      prompt: `Compare ${safeBrand} vs higoodie.com for AEO workflow, scanning depth, and actionable insights.`,
+      prompt: `Compare ${safeBrand} vs ${comp2} for target audience fit, quality, and actionable insights.`,
       rationale: "Tracks buyer-intent comparison coverage.",
       category: "competitor",
     },
     {
       topic: "AI Search Visibility",
-      prompt: `Compare ${safeBrand} vs scrunch.com for AI search visibility, citations, and referral intelligence.`,
+      prompt: `Compare ${safeBrand} vs ${comp3} for industry authority, citations, and overall value.`,
       rationale: "Measures competitive position in referrals/citations narratives.",
       category: "competitor",
     },
     {
       topic: "Best Choice",
-      prompt: `Which is better for AEO in 2026: ${safeBrand}, sitefire.ai, higoodie.com, or scrunch.com?`,
+      prompt: `Which is better in 2026: ${safeBrand}, or alternatives like ${compListStr}?`,
       rationale: "Captures direct recommendation outcomes.",
       category: "competitor",
     },
     {
       topic: "Trust and Fit",
-      prompt: `Is ${safeDomain} more reliable than sitefire.ai for production-grade AI search optimization?`,
+      prompt: `Is ${safeDomain} more reliable than ${comp1} for quality services in this category?`,
       rationale: "Assesses brand trust against known alternatives.",
       category: "competitor",
     },

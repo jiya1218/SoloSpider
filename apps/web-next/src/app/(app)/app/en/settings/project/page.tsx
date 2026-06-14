@@ -29,7 +29,11 @@ export default function ProjectSettingsPage() {
       setBrandName(activeProject.brand_name || activeProject.name || "");
       setDomain(activeProject.domain || "");
       setTagline(activeProject.brand_tagline || "");
-      setDescription(activeProject.brand_description || "");
+      
+      const rawDesc = activeProject.brand_description || "";
+      const parts = rawDesc.split("\n---\nMETADATA: ");
+      setDescription(parts[0]);
+
       setBrandLogoUrl(activeProject.brand_logo_url || "");
       setOgImageUrl(activeProject.og_image_url || "");
       setFaviconUrl(activeProject.favicon_url || "");
@@ -45,6 +49,12 @@ export default function ProjectSettingsPage() {
 
     setIsSaving(true);
     try {
+      const rawDesc = activeProject.brand_description || "";
+      const parts = rawDesc.split("\n---\nMETADATA: ");
+      const metadataStr = parts.length > 1 ? `\n---\nMETADATA: ${parts[1]}` : "";
+      const cleanNewDesc = description.trim();
+      const updatedDesc = cleanNewDesc ? `${cleanNewDesc}${metadataStr}` : (metadataStr ? metadataStr : null);
+
       const supabase = getSupabaseBrowserClient();
       const { error } = await supabase
         .from("projects")
@@ -52,7 +62,7 @@ export default function ProjectSettingsPage() {
           brand_name: brandName.trim() || activeProject.name,
           domain: domain.trim(),
           brand_tagline: tagline.trim() || null,
-          brand_description: description.trim() || null,
+          brand_description: updatedDesc,
           brand_logo_url: brandLogoUrl.trim() || null,
           og_image_url: ogImageUrl.trim() || null,
           favicon_url: faviconUrl.trim() || null,

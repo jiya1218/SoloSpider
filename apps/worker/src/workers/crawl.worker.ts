@@ -3,7 +3,7 @@ import { redis } from "../config.js";
 import { supabase } from "../lib/supabase.js";
 import { discoverUrls, crawlPage, type CrawledPageData } from "../lib/crawler.js";
 import { generateAndSaveAiPrompts } from "../lib/prompt-generator.js";
-import type { CrawlJobData } from "../queues.js";
+import { CrawlJobData, promptScanQueue } from "../queues.js";
 
 const BATCH_SIZE = 5;
 
@@ -22,6 +22,15 @@ async function processCrawlJob(job: Job<CrawlJobData>): Promise<object> {
     runId = data.id as string;
   } else {
     await supabase.from("crawl_runs").update({ status: "running" }).eq("id", runId);
+  }
+
+  // Clear any existing crawled pages from previous runs to prevent contamination
+  const { error: clearErr } = await supabase
+    .from("crawled_pages")
+    .delete()
+    .eq("project_id", project_id);
+  if (clearErr) {
+    console.warn(`[CrawlWorker] Failed to clear old crawled pages: ${clearErr.message}`);
   }
 
   await job.updateProgress(5);
@@ -81,6 +90,44 @@ async function processCrawlJob(job: Job<CrawlJobData>): Promise<object> {
   await generateAndSaveAiPrompts(project_id).catch(err => {
     console.error("[CrawlWorker] Automatic prompt generation failed:", err);
   });
+
+  // Automatically trigger real-time grounded AEO model scan on the generated prompts
+  try {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("brand_name, name, brand_description")
+      .eq("id", project_id)
+      .single();
+
+    if (project) {
+      const brandName = project.brand_name || project.name;
+      const rawDesc = project.brand_description || "";
+      let competitorsFromMeta: string[] = [];
+      const parts = rawDesc.split("\n---\nMETADATA: ");
+      if (parts.length > 1) {
+        try {
+          const meta = JSON.parse(parts[1]);
+          if (Array.isArray(meta.competitors)) {
+            competitorsFromMeta = meta.competitors;
+          }
+        } catch (e) {
+          console.warn("[CrawlWorker] Failed to parse project metadata:", e);
+        }
+      }
+
+      console.log(`[CrawlWorker] Enqueuing automatic prompt scan for project ${project_id} (${brandName}) with competitors:`, competitorsFromMeta);
+      await promptScanQueue.add("prompt-scan", {
+        project_id,
+        brand_name: brandName,
+        models: ["chatgpt", "gemini", "perplexity", "claude"],
+        competitors: competitorsFromMeta,
+      }, {
+        jobId: `auto-scan-${project_id}-${Date.now()}`
+      });
+    }
+  } catch (scanErr) {
+    console.error("[CrawlWorker] Failed to enqueue automatic prompt scan:", scanErr);
+  }
 
   await job.updateProgress(100);
 

@@ -41,8 +41,8 @@ function extractSitemapUrls(xml: string): string[] {
   const re = /<loc>\s*([^<]+)\s*<\/loc>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(xml)) !== null) {
-    const u = m[1].trim();
-    if (u.startsWith("http")) urls.push(u);
+    const u = decodeHtmlEntities(m[1].trim());
+    if (u && u.startsWith("http")) urls.push(u);
   }
   return [...new Set(urls)];
 }
@@ -102,33 +102,58 @@ export async function discoverUrls(
   maxPages: number
 ): Promise<Array<{ url: string; source: "sitemap" | "crawl" }>> {
   const origin = new URL(website).origin;
-  const queue: Array<{ url: string; source: "sitemap" | "crawl" }> = [];
-
-  // Try common sitemap locations
-  const sitemapCandidates = [
+  const pageUrls: string[] = [];
+  const sitemapsToProcess = [
     `${origin}/sitemap.xml`,
     `${origin}/sitemap_index.xml`,
     `${origin}/sitemap.txt`,
     `${origin}/sitemap`,
   ];
+  const processedSitemaps = new Set<string>();
+  const maxSitemapsToFetch = 15;
+  let sitemapsFetchedCount = 0;
+  let foundSitemap = false;
 
-  let found = false;
-  for (const sm of sitemapCandidates) {
+  let sitemapIndex = 0;
+  while (sitemapIndex < sitemapsToProcess.length && pageUrls.length < maxPages && sitemapsFetchedCount < maxSitemapsToFetch) {
+    const sm = sitemapsToProcess[sitemapIndex++];
+    const normSm = sm.trim().toLowerCase();
+    if (processedSitemaps.has(normSm)) continue;
+    processedSitemaps.add(normSm);
+
+    sitemapsFetchedCount++;
     const page = await fetchPage(sm);
     if (page && page.status < 400) {
-      const urls = extractSitemapUrls(page.html)
-        .filter(u => u.startsWith(origin))
-        .map(u => u.replace(/\/$/, ""));
-      if (urls.length > 0) {
-        urls.forEach(u => queue.push({ url: u, source: "sitemap" }));
-        found = true;
-        break;
+      const extracted = extractSitemapUrls(page.html)
+        .filter(u => u.startsWith(origin));
+
+      if (extracted.length > 0) {
+        foundSitemap = true;
+        for (const u of extracted) {
+          const uClean = u.replace(/\/$/, "");
+          const uLower = uClean.toLowerCase();
+          const isXml = uLower.split("?")[0].endsWith(".xml") || uLower.includes("/sitemap");
+
+          if (isXml) {
+            if (!processedSitemaps.has(uLower)) {
+              sitemapsToProcess.push(u);
+            }
+          } else {
+            if (!pageUrls.includes(uClean)) {
+              pageUrls.push(uClean);
+              if (pageUrls.length >= maxPages) break;
+            }
+          }
+        }
       }
     }
   }
 
-  // Fallback: crawl homepage
-  if (!found || queue.length === 0) {
+  const queue: Array<{ url: string; source: "sitemap" | "crawl" }> = [];
+  if (foundSitemap && pageUrls.length > 0) {
+    pageUrls.forEach(u => queue.push({ url: u, source: "sitemap" }));
+  } else {
+    // Fallback: crawl homepage
     const page = await fetchPage(website);
     if (page) {
       const links = extractLinks(page.html, website, origin).slice(0, maxPages);

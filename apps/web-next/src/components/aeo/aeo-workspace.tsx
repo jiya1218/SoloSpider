@@ -388,7 +388,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
       const supabase = getSupabaseBrowserClient();
       const { data } = await supabase
         .from("aeo_citations" as any)
-        .select("id, provider, query, cited_title, position, created_at")
+        .select("id, provider, query, cited_title, position, metadata, created_at")
         .eq("project_id", activeProject!.id)
         .order("created_at", { ascending: false })
         .limit(100);
@@ -626,15 +626,25 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
         r => r.prompt_text.toLowerCase() === p.prompt.toLowerCase()
       );
       
-      const citedUrls = matchingResults.flatMap(r => 
-        extractAllUrls(r.response_text || "")
+      const matchingCitations = (citationsQuery.data || []).filter(
+        c => c.query.toLowerCase() === p.prompt.toLowerCase()
       );
-      const uniqueCitedUrls = Array.from(new Set(citedUrls));
+
+      const uniqueCitationsMap = new Map<string, { title: string; url: string }>();
+      for (const cit of matchingCitations) {
+        const url = cit.metadata?.url || "";
+        const title = cit.cited_title || url.replace(/^(https?:\/\/)?(www\.)?/, "").split("/")[0] || "Source";
+        const key = url.toLowerCase().trim() || title.toLowerCase().trim();
+        if (key && !uniqueCitationsMap.has(key)) {
+          uniqueCitationsMap.set(key, { title, url });
+        }
+      }
+      const uniqueCitations = Array.from(uniqueCitationsMap.values());
       
       const targetCited = matchingResults.some(r => r.brand_mentioned);
-      const targetSourced = uniqueCitedUrls.some(url => {
+      const targetSourced = uniqueCitations.some(cit => {
         const domainClean = activeProject.domain?.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, "").replace(/\/$/, "");
-        return domainClean && url.toLowerCase().includes(domainClean);
+        return domainClean && (cit.url.toLowerCase().includes(domainClean) || cit.title.toLowerCase().includes(domainClean));
       });
       
       const searchVolume = getSearchVolume(p.prompt);
@@ -679,7 +689,7 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
         unweightedVisibility,
         targetCited,
         targetSourced,
-        uniqueCitedUrls,
+        uniqueCitations,
       };
     }).filter(p => {
       const matchesSearch = !promptSearch || 
@@ -872,9 +882,23 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
   const handleSeedCompetitors = async () => {
     setSeeding(true);
     try {
+      const rawDesc = activeProject.brand_description || "";
+      let competitorsFromMeta: string[] = [];
+      const parts = rawDesc.split("\n---\nMETADATA: ");
+      if (parts.length > 1) {
+        try {
+          const meta = JSON.parse(parts[1]);
+          if (Array.isArray(meta.competitors)) {
+            competitorsFromMeta = meta.competitors;
+          }
+        } catch (e) {
+          console.warn("Failed to parse project metadata:", e);
+        }
+      }
+
       const seeded = await seedAeoPrompts(
         activeProject.id,
-        buildCompetitorComparePrompts(activeProject.brand_name || activeProject.name, activeProject.domain),
+        buildCompetitorComparePrompts(activeProject.brand_name || activeProject.name, activeProject.domain, competitorsFromMeta),
       );
       toast.success(seeded.inserted > 0 ? `Added ${seeded.inserted} competitive prompts.` : "Competitive comparison prompts already present.");
       qc.invalidateQueries({ queryKey: ["aeo_prompts", activeProject.id] });
@@ -913,20 +937,24 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
   const handleRunScan = async () => {
     setScanning(true);
     try {
-      // ── Pre-check: seed prompts if none exist, so the worker never fails silently ──
+      // ── Pre-check: generate prompts if none exist, so the worker never fails silently ──
       const currentPrompts = promptsQuery.data ?? [];
       if (currentPrompts.length === 0) {
-        toast.info("No prompts found — auto-seeding baseline prompts...");
-        const seeded = await seedAeoPrompts(
-          activeProject.id,
-          buildDefaultAeoPrompts(activeProject.brand_name || activeProject.name, activeProject.domain),
-        );
+        toast.info("No prompts found — generating custom AI prompts from your website...");
+        const genRes = await fetch("/api/aeo/generate-prompts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ projectId: activeProject.id }),
+        });
+        const genData = await genRes.json();
+        if (!genRes.ok) throw new Error(genData.error || "Failed to generate custom AI prompts");
+        
         qc.invalidateQueries({ queryKey: ["aeo_prompts", activeProject.id] });
-        if (seeded.inserted > 0) {
-          toast.success(`Seeded ${seeded.inserted} baseline prompts.`);
-        }
+        toast.success(`Generated ${genData.generated} custom AEO prompts.`);
         // Brief pause to let Supabase propagate the new rows before the worker reads them
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 1000));
       }
 
       // ── Dispatch scan job ──
@@ -1808,17 +1836,17 @@ export function AeoWorkspace({ view }: { view: AeoView }) {
                         </td>
                         <td className="px-4 py-3.5">
                           <div className="max-w-[220px] max-h-24 overflow-y-auto space-y-1.5">
-                            {row.uniqueCitedUrls.length > 0 ? (
-                              row.uniqueCitedUrls.map((url: string, uIdx: number) => (
+                            {row.uniqueCitations.length > 0 ? (
+                              row.uniqueCitations.map((cit: { title: string; url: string }, uIdx: number) => (
                                 <a
                                   key={uIdx}
-                                  href={url}
+                                  href={cit.url || "#"}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="block text-[10px] text-violet-650 hover:underline font-bold truncate leading-tight flex items-center gap-1"
                                 >
                                   <ExternalLink className="w-2.5 h-2.5 shrink-0" />
-                                  {url.replace(/^(https?:\/\/)?(www\.)?/, "")}
+                                  {cit.title}
                                 </a>
                               ))
                             ) : (

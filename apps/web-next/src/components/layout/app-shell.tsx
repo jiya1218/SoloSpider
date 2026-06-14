@@ -6,8 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useProjects } from "@/hooks/useProjects";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { seedAeoPrompts, buildDefaultAeoPrompts } from "@/lib/aeoPrompts";
-import { runAeoAnalysis } from "@/lib/aeo";
+import { AeoWizardModal } from "@/components/dashboard/aeo-wizard-modal";
 import { toast } from "sonner";
 import { 
   LayoutDashboard, 
@@ -62,9 +61,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [newProjectDomain, setNewProjectDomain] = useState("");
-  const [newProjectName, setNewProjectName] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const menuItems: SidebarMenuItem[] = [
@@ -148,98 +144,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   ];
 
-  const triggerInitialAeoScan = async (project: {
-    id: string;
-    domain: string;
-    brand_name?: string | null;
-    name: string;
-    brand_description?: string | null;
-  }) => {
-    const supabase = getSupabaseBrowserClient();
-    const website = project.domain;
-    const resolvedBrandName = project.brand_name || project.name;
-    const topics = ["brand visibility", "ai search", "seo optimization"];
-
-    const { data: record, error: insertError } = await supabase
-      .from("aeo_analyses" as any)
-      .insert([
-        {
-          project_id: project.id,
-          website,
-          brand_name: resolvedBrandName,
-          topics,
-          status: "running",
-        },
-      ])
-      .select()
-      .single();
-
-    if (insertError) throw insertError;
-
-    const result = await runAeoAnalysis({
-      website,
-      brandName: resolvedBrandName,
-      topics,
-      brandDescription: project.brand_description || "",
-    });
-
-    await supabase
-      .from("aeo_analyses" as any)
-      .update({
-        status: "completed",
-        overall_score: result.overallScore,
-        ai_insights: result.providers,
-        category_scores: result.categoryScores,
-        recommendations: result.recommendations,
-        prompt_suggestions: result.promptSuggestions,
-      })
-      .eq("id", record.id);
-  };
-
-  const handleCreateProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canAddProject) {
-      toast.error(`Your ${currentPlan} plan is limited to ${projectLimit} project(s).`);
-      return;
-    }
-    const domainToCreate = newProjectDomain.trim();
-    const nameToCreate = newProjectName.trim();
-    if (!domainToCreate) return;
-
-    setIsSubmitting(true);
-    try {
-      const created = await addProject.mutateAsync({
-        name: nameToCreate || domainToCreate,
-        domain: normalizeUrl(domainToCreate),
-        brand_name: nameToCreate || domainToCreate,
-      });
-
-      try {
-        await seedAeoPrompts(
-          created.id,
-          buildDefaultAeoPrompts(nameToCreate || domainToCreate, normalizeUrl(domainToCreate)),
-        );
-      } catch (seedErr) {
-        console.warn("Seeding defaults failed:", seedErr);
-      }
-
-      toast.success("Project created successfully!");
-      setNewProjectDomain("");
-      setNewProjectName("");
-      setIsDialogOpen(false);
-
-      try {
-        await triggerInitialAeoScan(created as any);
-        toast.success("Initial AEO scan completed.");
-      } catch (scanErr: any) {
-        console.warn("Initial scan failed:", scanErr);
-      }
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to create project");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  // Wizard modal is now used instead of local project create handler
 
   const handleSignOut = async () => {
     const supabase = getSupabaseBrowserClient();
@@ -464,140 +369,23 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </p>
               </div>
 
-              <form onSubmit={handleCreateProject} className="space-y-4 text-left pt-2">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-650 uppercase tracking-wider">
-                    Website URL / Domain
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="example.com"
-                    value={newProjectDomain}
-                    onChange={(e) => setNewProjectDomain(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 placeholder-slate-400 focus:border-violet-600 focus:bg-white outline-none transition-all shadow-inner-sm"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-650 uppercase tracking-wider">
-                    Project / Brand Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="My Brand"
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 placeholder-slate-400 focus:border-violet-600 focus:bg-white outline-none transition-all shadow-inner-sm"
-                  />
-                </div>
-
+              <div className="pt-4 flex justify-center">
                 <button
-                  type="submit"
-                  disabled={isSubmitting || addProject.isPending}
-                  className="w-full h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg disabled:opacity-60 mt-6 cursor-pointer"
+                  type="button"
+                  onClick={() => setIsDialogOpen(true)}
+                  className="w-full max-w-sm h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg cursor-pointer"
                 >
-                  {isSubmitting || addProject.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin text-white" />
-                      Creating Workspace...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="h-4 w-4 text-white" />
-                      Create My First Project
-                    </>
-                  )}
+                  <Plus className="h-4 w-4 text-white" />
+                  Start Setup Wizard
                 </button>
-              </form>
+              </div>
             </div>
           )}
         </div>
       </main>
 
       {/* Create Project Custom Modal Dialog */}
-      {isDialogOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="fixed inset-0" onClick={() => setIsDialogOpen(false)} />
-          <div className="relative bg-white rounded-3xl border border-slate-100 p-6 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Globe className="h-5 w-5 text-violet-600" />
-                <h3 className="text-base font-black text-slate-800 uppercase tracking-wide">
-                  Create New Project
-                </h3>
-              </div>
-              <button 
-                onClick={() => setIsDialogOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            
-            <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-              Enter your website domain and we'll automatically configure your new workspace dashboard.
-            </p>
-
-            <form onSubmit={handleCreateProject} className="space-y-4 pt-2">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                  Website Domain
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="example.com"
-                  value={newProjectDomain}
-                  onChange={(e) => setNewProjectDomain(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 placeholder-slate-400 focus:border-violet-600 focus:bg-white outline-none transition-all"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                  Brand Name (optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="My Brand"
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 placeholder-slate-400 focus:border-violet-600 focus:bg-white outline-none transition-all"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setIsDialogOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || addProject.isPending}
-                  className="px-5 py-2.5 rounded-xl btn-grad text-white text-xs font-bold shadow-sm shadow-violet-600/20 disabled:opacity-60 flex items-center gap-1.5"
-                >
-                  {isSubmitting || addProject.isPending ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="h-3.5 w-3.5" />
-                      Create Project
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AeoWizardModal isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} />
     </div>
   );
 }

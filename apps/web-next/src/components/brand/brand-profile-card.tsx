@@ -111,7 +111,7 @@ export function BrandProfileCard({ project }: { project: Project | null }) {
           </div>
           <div className="w-2/3">
             <p className="text-xs font-semibold text-slate-700 leading-relaxed">
-              {project?.brand_description || "Acme Solutions helps ambition-driven teams scale faster with AI-powered marketing intelligence and automation."}
+              {(project?.brand_description ? project.brand_description.split("\n---\nMETADATA: ")[0] : "") || "Acme Solutions helps ambition-driven teams scale faster with AI-powered marketing intelligence and automation."}
             </p>
           </div>
         </div>

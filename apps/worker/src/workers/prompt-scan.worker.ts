@@ -5,7 +5,7 @@ import { queryModel, MODEL_MAP } from "../lib/openrouter.js";
 import { parseCitations, extractCitationsFromText } from "../lib/citation-parser.js";
 import { generateFanouts } from "../lib/fanout-generator.js";
 import { persistGapsForRun } from "../lib/gap-detector.js";
-import type { PromptScanJobData } from "../queues.js";
+import { PromptScanJobData, scoringQueue } from "../queues.js";
 
 async function processPromptScanJob(job: Job<PromptScanJobData>): Promise<object> {
   const {
@@ -16,12 +16,36 @@ async function processPromptScanJob(job: Job<PromptScanJobData>): Promise<object
     run_id,
   } = job.data;
 
-  // Merge default competitors to guarantee they are always tracked in scans
-  const defaultCompetitors = ["sitefire.ai", "higoodie.com", "scrunch.com"];
-  const mergedCompetitors = Array.from(new Set([
-    ...competitors.map((c: string) => c.toLowerCase().trim()),
-    ...defaultCompetitors
-  ])).filter(Boolean);
+  // Load project domain metadata & target market details for grounding
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, name, domain, brand_name, brand_description, brand_tagline")
+    .eq("id", project_id)
+    .single();
+
+  const rawDesc = project?.brand_description || "";
+  let cleanDesc = rawDesc;
+  let competitorsFromMeta: string[] = [];
+  const parts = rawDesc.split("\n---\nMETADATA: ");
+  if (parts.length > 1) {
+    cleanDesc = parts[0];
+    try {
+      const meta = JSON.parse(parts[1]);
+      if (Array.isArray(meta.competitors)) {
+        competitorsFromMeta = meta.competitors;
+      }
+    } catch (e) {
+      console.warn("[PromptScanWorker] Failed to parse project metadata:", e);
+    }
+  }
+
+  // Merge default competitors to guarantee they are always tracked in scans if none are specified
+  const competitorsInput = Array.isArray(competitors) ? competitors : [];
+  const allParsedCompetitors = [...competitorsInput, ...competitorsFromMeta].map(c => c.toLowerCase().trim()).filter(Boolean);
+  
+  const mergedCompetitors = allParsedCompetitors.length > 0
+    ? Array.from(new Set(allParsedCompetitors))
+    : [];
 
   console.log(`[PromptScanWorker] Job ${job.id} — project=${project_id} models=${models.join(",")} competitors=${mergedCompetitors.join(",")}`);
 
@@ -34,18 +58,11 @@ async function processPromptScanJob(job: Job<PromptScanJobData>): Promise<object
 
   if (prompt_ids && prompt_ids.length > 0) query = query.in("id", prompt_ids);
 
-  const { data: prompts, error: promptsErr } = await query.limit(20);
+  const { data: prompts, error: promptsErr } = await query.limit(50);
   if (promptsErr) throw promptsErr;
   if (!prompts || prompts.length === 0) {
     throw new Error("No active prompts found. Add prompts in the Prompt Lab tab first.");
   }
-
-  // Load project domain metadata & target market details for grounding
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, name, domain, brand_name, brand_description, brand_tagline")
-    .eq("id", project_id)
-    .single();
 
   // Load crawled pages for RAG grounding context
   const { data: crawledPages } = await supabase
@@ -57,15 +74,24 @@ async function processPromptScanJob(job: Job<PromptScanJobData>): Promise<object
 
   const brandNameGround = project?.brand_name || project?.name || brand_name;
   const brandDomainGround = project?.domain || "";
-  const brandDescriptionGround = project?.brand_description || project?.brand_tagline || "A leading platform in its space.";
+  const brandDescriptionGround = cleanDesc || project?.brand_tagline || "A leading platform in its space.";
 
-  let groundingContext = `\nWeb Search Grounding Context:\nBrand Information:\n- Brand Name: ${brandNameGround}\n- Website Domain: ${brandDomainGround}\n- Description: ${brandDescriptionGround}\n\nTarget Competitors:\n${mergedCompetitors.map(c => `- ${c}`).join("\n")}\n\nIndexed Web Pages for ${brandNameGround}:\n`;
+  let competitorsSection = "";
+  if (mergedCompetitors.length > 0) {
+    competitorsSection = `Target Competitors:\n${mergedCompetitors.map(c => `- ${c}`).join("\n")}\n\n`;
+  }
+
+  let groundingContext = `\nWeb Search Grounding Context:\nBrand Information:\n- Brand Name: ${brandNameGround}\n- Website Domain: ${brandDomainGround}\n- Description: ${brandDescriptionGround}\n\n${competitorsSection}Indexed Web Pages for ${brandNameGround}:\n`;
 
   if (crawledPages && crawledPages.length > 0) {
     groundingContext += crawledPages.map(p => `* URL: ${p.url}\n  Title: ${p.title || ""}\n  Description: ${p.meta_desc || ""}\n  Heading: ${p.h1 || ""}`).join("\n");
   } else {
     groundingContext += "No indexed web pages available yet.";
   }
+
+  const competitorInstruction = mergedCompetitors.length > 0
+    ? ` and its competitors (${mergedCompetitors.join(", ")})`
+    : "";
 
   const systemPrompt = `You are a search engine assistant (like ChatGPT Search, Perplexity, or Gemini Search) with access to real-time search results and web indices.
 To answer the user's query, you must utilize the following search engine index records and grounding context:
@@ -74,7 +100,7 @@ ${groundingContext}
 
 Instructions:
 1. Provide a comprehensive, detailed, and realistic response to the search query.
-2. Integrate citations, links, or mentions of the brand (${brandNameGround}) and its competitors (${mergedCompetitors.join(", ")}) where relevant to the user query, as a search engine would.
+2. Integrate citations, links, or mentions of the brand (${brandNameGround})${competitorInstruction} where relevant to the user query, as a search engine would.
 3. Be objective. Cite specific tools, products, companies, and brand names where appropriate.
 4. Maintain a natural, authoritative search engine synthesis tone.`;
 
@@ -214,7 +240,7 @@ ${groundingContext}
 
 Instructions:
 1. Provide a comprehensive, detailed response synthesizing the query.
-2. Integrate citations, links, or mentions of the brand (${brandNameGround}) and its competitors where relevant based on the search engine results context and index records.
+2. Integrate citations, links, or mentions of the brand (${brandNameGround})${competitorInstruction} where relevant based on the search engine results context and index records.
 3. Be objective. Cite specific tools, products, companies, and brand names where appropriate.
 4. Maintain a natural, authoritative search engine synthesis tone.`;
 
@@ -289,7 +315,7 @@ Instructions:
         cited_title: brand_name,
         position:    citations.mentionPosition ?? 1,
         metadata: {
-          url:       brandDomainGround ? `https://${brandDomainGround}` : "",
+          url:       brandDomainGround ? (brandDomainGround.startsWith("http") ? brandDomainGround : `https://${brandDomainGround}`) : "",
           context:   citations.mentionContext,
           sentiment: citations.mentionSentiment,
           run_id:    runId,
@@ -354,6 +380,18 @@ Instructions:
     console.warn(`[PromptScanWorker] Gap persistence failed silently: ${e?.message}`);
     return { gaps_upserted: 0 };
   });
+
+  // Recompute overall visibility / GEO score immediately based on the scan results
+  try {
+    console.log(`[PromptScanWorker] Scan complete. Triggering ScoringWorker for project ${project_id}...`);
+    await scoringQueue.add(
+      "score",
+      { project_id, brand_name },
+      { jobId: `score-scan-${project_id}-${runId}-${Date.now()}` }
+    );
+  } catch (scoreErr) {
+    console.error(`[PromptScanWorker] Failed to enqueue scoring job:`, scoreErr);
+  }
 
   await job.updateProgress(100);
 
